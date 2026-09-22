@@ -6,6 +6,12 @@ uploads/
 shots/
 thumbs/
 queue.json
+music.wav
+schedule_plan.json
+daily_post_state.json
+
+# Local Claude Code permission settings — not app config
+.claude/
 
 # Python
 __pycache__/

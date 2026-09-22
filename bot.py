@@ -3,13 +3,14 @@
 
   python3 bot.py login                 open the browser once; sign in to YouTube, TikTok, Facebook; close it
 """
-import sys, os, re, subprocess, time, urllib.request, json, datetime
+import sys, os, re, glob, subprocess, time, urllib.request, json, datetime
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROFILE = os.path.join(HERE, "chrome_profile")
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9222
+ACTIVE_TARGET_ID = None  # Explicit tab identity for the in-app viewer; never inferred from window focus.
 SITES = ["https://studio.youtube.com", "https://www.tiktok.com/tiktokstudio", "https://business.facebook.com"]
 
 
@@ -21,18 +22,61 @@ def chrome_running():
         return False
 
 
-def start_chrome(urls=()):
+def _move_running_chrome_offscreen():
+    """-g/-j (below) only affect Chrome's own startup -- they can't do anything about a window that's
+    already open in the foreground when start_chrome() is called on an already-running instance (confirmed
+    during review). Push it off-screen directly via CDP instead, the same way the launch flags do for a
+    fresh start."""
+    try:
+        with sync_playwright() as p:
+            b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
+            for ctx in b.contexts:
+                for pg in ctx.pages:
+                    session = pg.context.new_cdp_session(pg)
+                    try:
+                        target_id = session.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+                        window_id = session.send("Browser.getWindowForTarget", {"targetId": target_id})["windowId"]
+                        session.send("Browser.setWindowBounds", {"windowId": window_id, "bounds": {"left": -2400, "top": -2400}})
+                    finally:
+                        session.detach()
+                    return  # one window move covers this single-profile automation instance
+    except Exception:
+        pass  # best-effort -- don't let a repositioning failure block the caller
+
+
+def start_chrome(urls=(), background=True):
     """Plain Chrome (not launched by Playwright, so Google sign-in works) with a debug port. Starts at most one."""
     if chrome_running():
+        if background:
+            _move_running_chrome_offscreen()
         return
     already = subprocess.run(["pgrep", "-f", f"user-data-dir={PROFILE}"], capture_output=True, text=True).stdout.strip()
     if not already:
-        # Positioned off-screen (not minimized/headless) so it keeps rendering normally for the CDP screencast
-        # the web app's Live Automation panel streams, without ever popping up in front of the user. Headless
-        # itself gets detected and blocked by Google/Meta/TikTok logins, so this is the closest thing to invisible.
-        subprocess.Popen([CHROME, f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
-                          "--no-first-run", "--no-default-browser-check",
-                          "--window-position=-2400,-2400", "--window-size=1280,900", *urls],
+        # A forceful kill (pkill -9, crash, force-quit) leaves Chrome's own SingletonLock
+        # files behind, since only a graceful quit removes them. On the next launch Chrome's
+        # internal lock-detection can get confused by the stale lock and exit shortly after
+        # starting -- flaky, not a deterministic failure. Since we've just confirmed no live
+        # process holds this profile, any lock files here are stale; clear them first.
+        for f in glob.glob(os.path.join(PROFILE, "Singleton*")):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+        # Keep regular Chrome positioned away from the dashboard. OS window placement
+        # may vary; this is a presentation preference, not an anti-detection measure.
+        command = ["open", "-n"]
+        if background:
+            # -g alone isn't reliable for Chrome: it can self-activate shortly after its first
+            # window appears, overriding the "don't foreground" hint. -j launches it already
+            # hidden (like Cmd+H), a stronger state Chrome has to actively undo, not just skip.
+            command += ["-g", "-j"]
+        command += ["-a", "/Applications/Google Chrome.app", "--args",
+                    f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
+                    "--no-first-run", "--no-default-browser-check", "--window-size=1280,900"]
+        if background:
+            command.append("--window-position=-2400,-2400")
+        command.extend(urls)
+        subprocess.Popen(command,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for _ in range(40):
         if chrome_running():
@@ -41,7 +85,7 @@ def start_chrome(urls=()):
 
 
 def login():
-    start_chrome(SITES)
+    start_chrome(SITES, background=False)
     print("Chrome opened. Sign in to YouTube, TikTok and Facebook in that window, then tell Claude. Leave it open.")
 
 
@@ -65,25 +109,51 @@ def show_idle_screen(url="https://www.youtube.com"):
         except Exception:
             pass
 
-CHANNEL = "UC4gsfYjRlgp36oWy54juMHw"
+def resolve_channel(pg):
+    """The channel-less root redirects to whichever channel is signed in -- no hardcoded ID needed,
+    so this works for any user's account, not just one specific channel. The redirect timing varies
+    (client-side JS resolves sign-in state), so poll for it rather than guessing a fixed delay."""
+    pg.goto("https://studio.youtube.com/", wait_until="domcontentloaded", timeout=20000)
+    for _ in range(20):
+        m = re.search(r"/channel/(UC[\w-]+)", pg.url)
+        if m:
+            return m.group(1)
+        pg.wait_for_timeout(500)
+    sys.exit(f"Could not resolve a YouTube channel from the signed-in account (landed on {pg.url!r}).")
+
+
+def _auto_dismiss_dialogs(pg):
+    """connect_over_cdp(no_defaults=True) -- required for Chrome 150+ compatibility -- also turns off
+    Playwright's own automatic dialog dismissal. Without this, a native "leave page? changes won't be
+    saved" confirm (e.g. navigating away from an unsaved composer draft) has nothing to answer it and
+    the call that triggered the navigation hangs/errors instead of just proceeding. Each call site gets
+    a fresh Page wrapper (new connect_over_cdp() per with-block), so this is safe to attach every time."""
+    pg.on("dialog", lambda dialog: dialog.accept())
+    return pg
 
 
 def get_page(ctx, host):
     for pg in ctx.pages:
         if host in pg.url:
-            return pg
-    return ctx.new_page()
+            return _auto_dismiss_dialogs(pg)
+    return _auto_dismiss_dialogs(ctx.new_page())
+
+
+def track_automation_page(page):
+    """Let the viewer follow this tab without activating a Chrome window."""
+    global ACTIVE_TARGET_ID
+    session = page.context.new_cdp_session(page)
+    try:
+        ACTIVE_TARGET_ID = session.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+    finally:
+        session.detach()
 
 
 def fresh_page(ctx, match):
-    """New tab for a flow; stale tabs of the same site are closed without the 'leave page?' prompt."""
-    for pg in list(ctx.pages):
-        if match in pg.url:
-            try:
-                pg.close(run_before_unload=False)
-            except Exception:
-                pass
-    return ctx.new_page()
+    """Reuse the automation tab; callers navigate to the start of a new upload flow."""
+    pages = [page for page in ctx.pages if not page.is_closed()]
+    pg = next((page for page in pages if match in page.url), None) or (pages[0] if pages else ctx.new_page())
+    return _auto_dismiss_dialogs(pg)
 
 
 def yt_fill_schedule(pg, when):
@@ -114,14 +184,15 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
     when = None if now else (datetime.datetime.strptime(vid["schedule"], "%Y-%m-%d %H:%M") if vid.get("schedule") else None)
     if not now and when is None:
         sys.exit("youtube: no schedule time and publish_now is not set")
-    on_step("Opening Chrome browser")
+    on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step("Navigating to YouTube Studio")
         pg = get_page(b.contexts[0], "studio.youtube.com") if resume else fresh_page(b.contexts[0], "studio.youtube.com")
-        pg.bring_to_front()
+        track_automation_page(pg)
         if not resume:
-            pg.goto(f"https://studio.youtube.com/channel/{CHANNEL}/videos/upload?d=ud")
+            channel = resolve_channel(pg)
+            pg.goto(f"https://studio.youtube.com/channel/{channel}/videos/upload?d=ud")
             on_step("Uploading video file")
             pg.locator("input[type=file]").first.set_input_files(vid["file"], timeout=180000)
             pg.wait_for_selector("#title-textarea #textbox", timeout=60000)
@@ -135,6 +206,17 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
                     on_step("Setting custom thumbnail")
                     ti.first.set_input_files(vid["thumbnail"], timeout=60000)
                     pg.wait_for_timeout(3000)
+            # The title box appears almost immediately (well under 10% uploaded) -- it's not a signal
+            # the transfer is done, only that the form is ready. Without waiting for the real "Upload
+            # complete" milestone, a caller can reuse this tab (fresh_page() picks whichever tab is
+            # available) for another job while this upload is still in flight; navigating the tab away
+            # then silently aborts it, and the script has no way to detect that (confirmed during
+            # testing -- a video reported as successfully scheduled never actually finished uploading).
+            on_step("Waiting for upload to finish")
+            pg.wait_for_function(
+                "document.querySelector('ytcp-video-upload-progress')?.innerText.includes('Upload complete')",
+                timeout=600000,
+            )
             on_step("Setting audience and content options")
             mfk_name = "VIDEO_MADE_FOR_KIDS_MFK" if vid.get("made_for_kids") else "VIDEO_MADE_FOR_KIDS_NOT_MFK"
             pg.locator(f"[name={mfk_name}]").first.click()
@@ -163,9 +245,64 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             print("YouTube: stopped before the final button (dry run).")
 
 
-PAGE_ASSET = "1310083138856565"
-BUSINESS = "1662852205306739"
-ACCOUNTS = {"instagram": "amourawhispers", "facebook": "Amoura"}
+def _row_state(handle):
+    """(platform alt, selected?) for one [role=option] element handle in the account picker."""
+    alt = next((a for a in (img.get_attribute("alt") for img in handle.query_selector_all("img"))
+                if a in ("Instagram", "Facebook")), None)
+    return alt, handle.get_attribute("aria-selected") == "true"
+
+
+def select_meta_account(pg, target):
+    """Selects exactly one account of the requested platform (instagram or facebook) in the composer's
+    account picker, identified by each row's platform icon (img alt="Instagram"/"Facebook") rather than a
+    hardcoded display name -- works for any signed-in account, not just one specific one. Returns the
+    selected account's display name for logging.
+
+    Operates on element handles pinned to each row's actual DOM node, not locators re-queried by index or
+    by name text:
+    - an index can go stale, since clicking a row can reorder/re-render the list (confirmed during
+      testing -- a stale `.nth(i)` silently referred to a different account after an earlier click)
+    - a name isn't a safe re-location key either, since a Facebook Page and its linked Instagram account
+      can share the same display name (confirmed during review) -- filtering by that name would then
+      match whichever row happens to come first, not necessarily the intended one
+    An element handle sidesteps both: it's a direct reference to one specific DOM node, unaffected by
+    reordering or by other rows sharing its name.
+
+    Selects exactly one row of the target platform (the first match) and deselects every other row,
+    including other rows of the *same* platform: with more than one connected account of a platform, an
+    earlier version selected all of them instead of just one (confirmed during review)."""
+    want_alt = "Instagram" if target == "instagram" else "Facebook"
+    icons = pg.locator("img[alt=Instagram], img[alt=Facebook]")
+    if icons.count() == 0:
+        sys.exit("meta: no Instagram/Facebook account icons found in the composer")
+    icons.first.click(force=True)
+    pg.wait_for_timeout(1000)
+    handles = pg.locator("[role=option]").element_handles()
+    if not handles:
+        sys.exit("meta: account picker did not open (no [role=option] rows)")
+    states = [_row_state(h) for h in handles]
+    target_indices = [i for i, (alt, _) in enumerate(states) if alt == want_alt]
+    if not target_indices:
+        sys.exit(f"meta: no {want_alt} account found among the {len(handles)} available accounts")
+    keep = target_indices[0]
+    target_name = handles[keep].inner_text().strip()
+    if len(target_indices) > 1:
+        print(f"meta: WARNING {len(target_indices)} {want_alt} accounts connected; using the first ({target_name!r})")
+    for i, handle in enumerate(handles):
+        want_selected = i == keep
+        if states[i][1] == want_selected:
+            continue
+        handle.click()
+        pg.wait_for_timeout(700)
+    bad = [i for i, h in enumerate(handles) if _row_state(h)[1] != (i == keep)]
+    if bad:
+        sys.exit(f"meta: final account selection is wrong at row index(es) {bad} (wanted only {keep}, {target_name!r})")
+    # Click a neutral heading rather than pressing Escape (Escape's effect on the underlying
+    # selection was unconfirmed during testing) or blind page coordinates (risk of hitting an
+    # unrelated control) to close the picker without disturbing the selection just verified above.
+    pg.get_by_text("Reel details").first.click(force=True)
+    pg.wait_for_timeout(500)
+    return target_name
 
 
 def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: None):
@@ -177,28 +314,19 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
         when = datetime.datetime.combine(datetime.date.today(), datetime.datetime.strptime(at, "%H:%M").time()) if at else \
             datetime.datetime.strptime(vid["schedule"], "%Y-%m-%d %H:%M")
     caption = vid["description"].replace(" #shorts", "")
-    on_step("Opening Chrome browser")
+    on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step(f"Navigating to Meta Business Suite ({target})")
         pg = fresh_page(b.contexts[0], "business.facebook.com/latest")
-        pg.bring_to_front()
-        pg.goto(f"https://business.facebook.com/latest/reels_composer?asset_id={PAGE_ASSET}&business_id={BUSINESS}")
+        track_automation_page(pg)
+        # No asset_id/business_id in the URL: Business Suite auto-resolves to whichever business/page
+        # context the signed-in account defaults to -- works for any user, not just one hardcoded pair.
+        pg.goto("https://business.facebook.com/latest/reels_composer")
         pg.wait_for_selector("text=Reel details", timeout=60000)
         pg.wait_for_timeout(2000)
         on_step(f"Selecting {target} account")
-        want = ACCOUNTS[target]
-        trigger = pg.locator("text=/Amoura|amourawhispers/").first
-        trigger.click(); pg.wait_for_timeout(1000)
-        for name in ACCOUNTS.values():
-            cur = pg.locator("text=/Amoura|amourawhispers/").first.inner_text()
-            selected = name in cur
-            if selected != (name == want):
-                pg.get_by_text(name, exact=True).last.click(); pg.wait_for_timeout(700)
-        pg.keyboard.press("Escape"); pg.wait_for_timeout(500)
-        shown = pg.locator("text=/Amoura|amourawhispers/").first.inner_text()
-        if shown.strip() != want:
-            sys.exit(f"Post-to shows {shown!r}, wanted only {want!r}")
+        want_name = select_meta_account(pg, target)  # verifies the correct account itself; nothing further to check here
         on_step("Uploading video file")
         with pg.expect_file_chooser(timeout=30000) as fc:
             pg.get_by_role("button", name="Add Video").click()
@@ -277,12 +405,12 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
         if when.minute % 5:
             sys.exit("TikTok schedules in 5-minute steps")
     caption = vid["description"].replace(" #shorts", "")
-    on_step("Opening Chrome browser")
+    on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step("Navigating to TikTok Studio")
         pg = fresh_page(b.contexts[0], "tiktok.com")
-        pg.bring_to_front()
+        track_automation_page(pg)
         pg.goto("https://www.tiktok.com/tiktokstudio/upload?from=webapp")
         on_step("Uploading video file")
         pg.locator("input[type=file]").first.set_input_files(vid["file"], timeout=180000)
@@ -373,8 +501,9 @@ def youtube_thumbnail(title_start, thumb_path):
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         pg = fresh_page(b.contexts[0], "studio.youtube.com")
-        pg.bring_to_front()
-        pg.goto(f"https://studio.youtube.com/channel/{CHANNEL}/videos/short")
+        track_automation_page(pg)
+        channel = resolve_channel(pg)
+        pg.goto(f"https://studio.youtube.com/channel/{channel}/videos/short")
         pg.wait_for_selector("ytcp-video-row", timeout=60000)
         pg.wait_for_timeout(2500)
         rows = pg.locator("ytcp-video-row")

@@ -205,8 +205,8 @@
       </div>
       <div id="browserOff" class="browser-off" style="display:none">
         <span class="ic">⚠️</span>
-        <span class="msg">The app's browser isn't running, so nothing is connected and no posts can go out yet.</span>
-        <button type="button" id="startBrowserBtn">▶ Start browser</button>
+        <span class="msg">Start the background posting browser to connect your accounts. Posting progress will appear here in Live Automation.</span>
+        <button type="button" id="startBrowserBtn">▶ Start posting browser</button>
       </div>
     </div>
 
@@ -370,7 +370,7 @@ document.getElementById('startBrowserBtn').addEventListener('click', async (e) =
     await fetch('/api/start', { method: 'POST' });
     setTimeout(() => { refreshAccounts(); connectWs(); }, 2500);
   } finally {
-    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Start browser'; }, 3000);
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Start posting browser'; }, 3000);
   }
 });
 
@@ -522,8 +522,13 @@ function connectWs() {
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
     if (m.t === 'no-browser') {
-      canvasOverlay.textContent = "Browser isn't running — click Start browser above to connect.";
+      canvasOverlay.textContent = "Start the posting browser above. You can watch each upload here without switching windows.";
       wsRetryMs = 8000;  // don't hammer reconnects while it's deliberately off
+      return;
+    }
+    if (m.t === 'idle' || m.t === 'waiting') {
+      canvasWrap.classList.remove('has-frame');
+      canvasOverlay.textContent = m.t === 'idle' ? 'Ready. Posting progress will appear here when a job starts.' : 'Loading the posting page… Live steps and logs remain available below.';
       return;
     }
     if (m.t !== 'frame') return;
