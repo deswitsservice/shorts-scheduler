@@ -20,6 +20,7 @@ with sync_playwright() as p:
     def route(r):
         path=r.request.url.split('test.local')[-1]
         if path=='/api/jobs': r.fulfill(json=jobs)
+        elif path=='/api/start': r.fulfill(status=503,json={'error':'Chrome did not become ready'})
         elif path=='/api/accounts': r.fulfill(json={'chrome':False})
         elif path=='/static/design.css': r.fulfill(path=str(STATIC/'design.css'),content_type='text/css')
         elif path=='/': r.fulfill(path=str(STATIC/'index.html'),content_type='text/html')
@@ -30,6 +31,9 @@ with sync_playwright() as p:
     page.wait_for_function("document.querySelector('#summaryTitle').textContent === 'active job'")
     assert 'Running' in page.locator('#statusText').inner_text()
     assert page.locator('#mfkGroup .choice-card.on').count()==1
+    page.locator('#startBrowserBtn').click()
+    page.wait_for_function("document.querySelector('#browserMessage').textContent.includes('Chrome did not become ready')")
+    assert page.locator('#startBrowserBtn').is_enabled()
     jobs[:]=[job('failed job','failed',error='Browser unavailable')]
     page.evaluate('refreshJobs()')
     assert 'Browser unavailable' in page.locator('#logConsole').inner_text()

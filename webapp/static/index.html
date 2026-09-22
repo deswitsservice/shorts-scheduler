@@ -203,6 +203,7 @@
         <div class="acct"><span class="badge" style="background:var(--fb)">f</span><span class="name">Facebook</span><span class="st"><span class="dot" id="d-meta2"></span><span id="t-meta2">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:var(--tt)">♪</span><span class="name">TikTok</span><span class="st"><span class="dot" id="d-tiktok"></span><span id="t-tiktok">checking…</span></span></div>
       </div>
+      <div id="browserMessage" class="hint" role="status" aria-live="polite"></div>
       <div id="browserOff" class="browser-off" style="display:none">
         <span class="ic">⚠️</span>
         <span class="msg">Start the background posting browser to connect your accounts. Posting progress will appear here in Live Automation.</span>
@@ -367,10 +368,15 @@ document.getElementById('startBrowserBtn').addEventListener('click', async (e) =
   const btn = e.currentTarget;
   btn.disabled = true; btn.textContent = 'Starting…';
   try {
-    await fetch('/api/start', { method: 'POST' });
-    setTimeout(() => { refreshAccounts(); connectWs(); }, 2500);
+    const response = await fetch('/api/start', { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Unable to start the posting browser.');
+    document.getElementById('browserMessage').textContent = 'Posting browser ready. Progress will appear in Live Automation.';
+    await refreshAccounts(); connectWs();
+  } catch (err) {
+    document.getElementById('browserMessage').textContent = err.message || 'Cannot reach the server. Try again.';
   } finally {
-    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Start posting browser'; }, 3000);
+    btn.disabled = false; btn.textContent = '▶ Start posting browser';
   }
 });
 
