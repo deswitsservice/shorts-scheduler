@@ -22,7 +22,7 @@ def chrome_running():
         return False
 
 
-def start_chrome(urls=()):
+def start_chrome(urls=(), background=True):
     """Plain Chrome (not launched by Playwright, so Google sign-in works) with a debug port. Starts at most one."""
     if chrome_running():
         return
@@ -30,9 +30,16 @@ def start_chrome(urls=()):
     if not already:
         # Keep regular Chrome positioned away from the dashboard. OS window placement
         # may vary; this is a presentation preference, not an anti-detection measure.
-        subprocess.Popen([CHROME, f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
-                          "--no-first-run", "--no-default-browser-check",
-                          "--window-position=-2400,-2400", "--window-size=1280,900", *urls],
+        command = ["open", "-n"]
+        if background:
+            command.append("-g")  # Launch Services: do not bring the application to the foreground.
+        command += ["-a", "/Applications/Google Chrome.app", "--args",
+                    f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
+                    "--no-first-run", "--no-default-browser-check", "--window-size=1280,900"]
+        if background:
+            command.append("--window-position=-2400,-2400")
+        command.extend(urls)
+        subprocess.Popen(command,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for _ in range(40):
         if chrome_running():
@@ -41,7 +48,7 @@ def start_chrome(urls=()):
 
 
 def login():
-    start_chrome(SITES)
+    start_chrome(SITES, background=False)
     print("Chrome opened. Sign in to YouTube, TikTok and Facebook in that window, then tell Claude. Leave it open.")
 
 
