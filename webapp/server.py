@@ -174,7 +174,7 @@ async def schedule(
     if "youtube" in plats and made_for_kids not in ("true", "false"):
         return JSONResponse({"error": "Answer whether this video is made for kids (required for YouTube)."}, status_code=400)
 
-    hashtags = " ".join("#" + t.strip().lstrip("#").replace(" ", "") for t in tags.split(",") if t.strip())
+    hashtags = " ".join("#" + re.sub(r"\s+", "", t.strip().lstrip("#")) for t in tags.split(",") if t.strip())
     desc = (description.strip() + ("\n\n" + hashtags if hashtags else "")).strip()
 
     err = validate_job(plats, title.strip(), desc, when_dt, publish_now)

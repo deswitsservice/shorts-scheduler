@@ -275,7 +275,7 @@
               <div class="d">Publish immediately after processing.</div></label>
             <label class="choice-card on" id="modeSchedCard"><input type="radio" name="mode" value="schedule" checked><span class="t">Schedule for later</span>
               <div class="d">Pick a date and time.</div>
-              <div class="schedule-fields"><input type="datetime-local" id="when" aria-label="Publish date and time"></div>
+              <div id="scheduleHint" class="hint" role="status"></div><div class="schedule-fields"><input type="datetime-local" id="when" aria-label="Publish date and time"></div>
             </label>
           </div>
 
@@ -446,13 +446,33 @@ function syncMode() {
 }
 document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', syncMode));
 
+function hashtagCount(text) { return (text.match(/(?<![\p{L}\p{N}_])#[\p{L}\p{N}_]+/gu) || []).length; }
+function syncSchedule() {
+  const platforms = checkedPlatforms();
+  const scheduled = document.querySelector('input[name=mode]:checked').value === 'schedule';
+  const when = new Date(whenEl.value), now = new Date();
+  const meta = platforms.some(p => p === 'instagram' || p === 'facebook');
+  const tiktok = platforms.includes('tiktok');
+  document.getElementById('scheduleHint').textContent = `Time zone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. ` + (scheduled ? [meta ? 'This app supports Instagram/Facebook scheduling later today only.' : '', tiktok ? 'TikTok: choose a 5-minute mark, 20 minutes to 10 days ahead.' : ''].filter(Boolean).join(' ') : 'Posts after processing.');
+  let error = '';
+  if (scheduled && whenEl.value) {
+    if (when <= new Date(now.getTime()+120000)) error = 'Choose a time more than two minutes from now.';
+    else if (meta && when.toDateString() !== now.toDateString()) error = 'This app supports Instagram/Facebook scheduling later today only.';
+    else if (tiktok && (when.getMinutes()%5 || when < new Date(now.getTime()+1200000) || when > new Date(now.getTime()+864000000))) error = 'TikTok: choose a 5-minute mark, 20 minutes to 10 days ahead.';
+  }
+  whenEl.required = scheduled;
+  whenEl.setCustomValidity(error);
+}
+whenEl.addEventListener('input', syncSchedule);
+document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', syncSchedule));
+
 /* ---------- live counters (mirrors webapp/server.py limits) ---------- */
 const CAPTION_LIMITS = { youtube: 5000, instagram: 2200, tiktok: 4000 };
 const IG_MAX_HASHTAGS = 30;
 function checkedPlatforms() { return [...document.querySelectorAll('input[name=p]:checked')].map(x => x.value); }
 function fullDescription() {
   const tags = document.getElementById('tags').value.split(',').map(t => t.trim()).filter(Boolean)
-    .map(t => '#' + t.replace(/^#/, '').replace(/\s+/g, ''));
+    .map(t => '#' + t.replace(/^#+/, '').replace(/\s+/g, ''));
   const desc = document.getElementById('desc').value.trim();
   return (desc + (tags.length ? '\n\n' + tags.join(' ') : '')).trim();
 }
@@ -462,15 +482,19 @@ function syncCounts() {
   const limits = plats.map(p => CAPTION_LIMITS[p]).filter(n => n);
   const tightest = limits.length ? Math.min(...limits) : null;
   const dEl = document.getElementById('descCount');
-  if (tightest) { dEl.textContent = `${full.length} / ${tightest}`; dEl.classList.toggle('warn', full.length > tightest); }
-  else { dEl.textContent = `${full.length} characters`; dEl.classList.remove('warn'); }
-  const n = (document.getElementById('tags').value.match(/[^,]+/g) || []).filter(t => t.trim()).length;
+  if (tightest) { dEl.textContent = `${[...full].length} / ${tightest}`; dEl.classList.toggle('warn', [...full].length > tightest); }
+  else { dEl.textContent = `${[...full].length} characters`; dEl.classList.remove('warn'); }
+  const n = hashtagCount(full);
   const tEl = document.getElementById('tagCount');
   const igLimit = plats.includes('instagram');
   tEl.textContent = igLimit ? `${n} / ${IG_MAX_HASHTAGS} hashtags` : `${n} hashtags`;
   tEl.classList.toggle('warn', igLimit && n > IG_MAX_HASHTAGS);
-  const tc = document.getElementById('titleCount'), len = document.getElementById('title').value.length;
-  tc.textContent = `${len}/100`; tc.classList.toggle('warn', len > 100);
+  const tc = document.getElementById('titleCount'), len = [...document.getElementById('title').value.trim()].length;
+  tc.textContent = plats.includes('youtube') ? `${len}/100` : `${len} characters`; tc.classList.toggle('warn', plats.includes('youtube') && len > 100);
+  document.getElementById('title').setCustomValidity(plats.includes('youtube') && len > 100 ? 'YouTube titles must be 100 characters or fewer.' : '');
+  document.getElementById('desc').setCustomValidity(tightest && [...full].length > tightest ? `Caption and hashtags exceed ${tightest} characters.` : '');
+  document.getElementById('tags').setCustomValidity(igLimit && n > IG_MAX_HASHTAGS ? `Caption and tags contain more than ${IG_MAX_HASHTAGS} hashtags.` : '');
+  syncSchedule();
 }
 document.getElementById('desc').addEventListener('input', syncCounts);
 document.getElementById('tags').addEventListener('input', syncCounts);
@@ -493,6 +517,8 @@ document.getElementById('form').addEventListener('submit', async e => {
   if (mode === 'schedule' && !whenEl.value) { msg.textContent = 'Pick a publish time, or choose Post now.'; msg.classList.add('err'); return; }
   if (plats.includes('youtube') && !mfkEl) { msg.textContent = 'Answer whether this video is made for kids.'; msg.classList.add('err'); return; }
   if (!document.getElementById('file').files[0]) { msg.textContent = 'Choose a video file.'; msg.classList.add('err'); return; }
+  syncCounts();
+  if (!e.currentTarget.reportValidity()) return;
   const fd = new FormData();
   fd.append('file', document.getElementById('file').files[0]);
   if (document.getElementById('thumb').files[0]) fd.append('thumbnail', document.getElementById('thumb').files[0]);
