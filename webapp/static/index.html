@@ -526,6 +526,11 @@ function connectWs() {
       wsRetryMs = 8000;  // don't hammer reconnects while it's deliberately off
       return;
     }
+    if (m.t === 'idle' || m.t === 'waiting') {
+      canvasWrap.classList.remove('has-frame');
+      canvasOverlay.textContent = m.t === 'idle' ? 'Ready. Posting progress will appear here when a job starts.' : 'Loading the posting page… Live steps and logs remain available below.';
+      return;
+    }
     if (m.t !== 'frame') return;
     wsRetryMs = 2000;
     canvasOverlay.textContent = 'No automation running. Submit the form to watch it work here.';

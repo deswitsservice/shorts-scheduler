@@ -94,6 +94,7 @@ def run_job(job):
             step["state"], step["error"] = "failed", "The browser isn't running, so nothing was posted. Open it (python3 bot.py login) and try again."
         job["finished"] = time.time()
         return
+    bot.ACTIVE_TARGET_ID = None
     job["started"] = time.time()
     for plat in job["platforms"]:
         step = job["steps"][plat]
@@ -120,6 +121,7 @@ def run_job(job):
             step["state"], step["error"] = "failed", str(e)
         except Exception as e:  # noqa: BLE001
             step["state"], step["error"] = "failed", friendly_error(e)
+    bot.ACTIVE_TARGET_ID = None
     job["current_platform"] = None
     job["finished"] = time.time()
     try:
@@ -265,12 +267,32 @@ async def start_browser():
 
 
 # ---------- live browser view (read-only: pixels only, no input is ever sent to the page) ----------
+async def find_automation_page(ctx, target_id):
+    """Resolve only the explicitly selected automation target, never another visible tab."""
+    if not target_id:
+        return None
+    for page in list(ctx.pages):
+        session = None
+        try:
+            session = await ctx.new_cdp_session(page)
+            info = await session.send("Target.getTargetInfo")
+            if info["targetInfo"]["targetId"] == target_id:
+                return page
+        except Exception:
+            continue
+        finally:
+            if session:
+                try:
+                    await session.detach()
+                except Exception:
+                    pass
+    return None
+
+
 @app.websocket("/ws")
 async def browser_ws(ws: WebSocket):
-    """Streams whichever Chrome tab is currently active (auto-follows bot.py's bring_to_front() calls via
-    document.visibilityState) so the user can watch the automation work. Purely one-way: no mouse/keyboard/text
-    ever gets forwarded back into the page from here. Never starts Chrome itself — if it isn't already running
-    (started via /api/start or a job), this just reports that and closes, rather than launching a window."""
+    """Read-only snapshots of the posting tab, independent of OS focus or tab visibility."""
+    import base64
     await ws.accept()
     if not bot.chrome_running():
         await ws.send_json({"t": "no-browser"})
@@ -279,65 +301,39 @@ async def browser_ws(ws: WebSocket):
     async with async_playwright() as p:
         try:
             browser = await p.chromium.connect_over_cdp(CDP, no_defaults=True)
-        except Exception:  # noqa: BLE001
+            ctx = browser.contexts[0]
+        except Exception:
             await ws.close()
             return
-        ctx = browser.contexts[0]
-        state = {"cdp": None, "page": None}
 
-        async def attach(page):
-            if state["cdp"]:
-                try:
-                    await state["cdp"].send("Page.stopScreencast")
-                    await state["cdp"].detach()
-                except Exception:  # noqa: BLE001
-                    pass
-            cdp = await ctx.new_cdp_session(page)
-
-            async def on_frame(ev):
-                m = ev["metadata"]
-                try:
-                    await ws.send_json({"t": "frame", "d": ev["data"], "w": m["deviceWidth"], "h": m["deviceHeight"]})
-                    await cdp.send("Page.screencastFrameAck", {"sessionId": ev["sessionId"]})
-                except Exception:  # noqa: BLE001
-                    pass
-
-            cdp.on("Page.screencastFrame", on_frame)
-            await cdp.send("Page.startScreencast", {"format": "jpeg", "quality": 70, "maxWidth": 1100, "everyNthFrame": 1})
-            state["cdp"], state["page"] = cdp, page
-
-        async def follow_active_tab():
+        async def stream():
+            page, target = None, None
             while True:
-                try:
-                    for pg in list(ctx.pages):
-                        try:
-                            visible = await pg.evaluate("document.visibilityState") == "visible"
-                        except Exception:  # noqa: BLE001
-                            continue
-                        if visible and pg is not state["page"]:
-                            await attach(pg)
-                            break
-                except Exception:  # noqa: BLE001
-                    pass
+                wanted = bot.ACTIVE_TARGET_ID
+                if wanted != target or page is None or page.is_closed():
+                    page = await find_automation_page(ctx, wanted)
+                    target = wanted
+                if page is None:
+                    await ws.send_json({"t": "idle"})
+                else:
+                    try:
+                        # Screenshots work independently of the foreground tab; do not activate it.
+                        frame = await page.screenshot(type="jpeg", quality=65, timeout=4000)
+                        if wanted == bot.ACTIVE_TARGET_ID:
+                            await ws.send_json({"t": "frame", "d": base64.b64encode(frame).decode()})
+                    except Exception:
+                        page = None
+                        await ws.send_json({"t": "waiting"})
                 await asyncio.sleep(0.8)
 
-        follower = asyncio.create_task(follow_active_tab())
+        sender = asyncio.create_task(stream())
+        receiver = asyncio.create_task(ws.receive_text())
         try:
-            if ctx.pages:
-                await attach(ctx.pages[0])
-            while True:
-                await ws.receive_text()  # client never sends real commands; this loop only detects disconnect
-        except WebSocketDisconnect:
-            pass
-        except Exception:  # noqa: BLE001
-            pass
+            await asyncio.wait([sender, receiver], return_when=asyncio.FIRST_COMPLETED)
         finally:
-            follower.cancel()
-            try:
-                if state["cdp"]:
-                    await state["cdp"].send("Page.stopScreencast")
-            except Exception:  # noqa: BLE001
-                pass
+            sender.cancel()
+            receiver.cancel()
+            await asyncio.gather(sender, receiver, return_exceptions=True)
 
 
 @app.get("/")

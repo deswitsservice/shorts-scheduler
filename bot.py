@@ -10,6 +10,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROFILE = os.path.join(HERE, "chrome_profile")
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9222
+ACTIVE_TARGET_ID = None  # Explicit tab identity for the in-app viewer; never inferred from window focus.
 SITES = ["https://studio.youtube.com", "https://www.tiktok.com/tiktokstudio", "https://business.facebook.com"]
 
 
@@ -27,9 +28,8 @@ def start_chrome(urls=()):
         return
     already = subprocess.run(["pgrep", "-f", f"user-data-dir={PROFILE}"], capture_output=True, text=True).stdout.strip()
     if not already:
-        # Positioned off-screen (not minimized/headless) so it keeps rendering normally for the CDP screencast
-        # the web app's Live Automation panel streams, without ever popping up in front of the user. Headless
-        # itself gets detected and blocked by Google/Meta/TikTok logins, so this is the closest thing to invisible.
+        # Keep regular Chrome positioned away from the dashboard. OS window placement
+        # may vary; this is a presentation preference, not an anti-detection measure.
         subprocess.Popen([CHROME, f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
                           "--no-first-run", "--no-default-browser-check",
                           "--window-position=-2400,-2400", "--window-size=1280,900", *urls],
@@ -75,15 +75,20 @@ def get_page(ctx, host):
     return ctx.new_page()
 
 
+def track_automation_page(page):
+    """Let the viewer follow this tab without activating a Chrome window."""
+    global ACTIVE_TARGET_ID
+    session = page.context.new_cdp_session(page)
+    try:
+        ACTIVE_TARGET_ID = session.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+    finally:
+        session.detach()
+
+
 def fresh_page(ctx, match):
-    """New tab for a flow; stale tabs of the same site are closed without the 'leave page?' prompt."""
-    for pg in list(ctx.pages):
-        if match in pg.url:
-            try:
-                pg.close(run_before_unload=False)
-            except Exception:
-                pass
-    return ctx.new_page()
+    """Reuse the automation tab; callers navigate to the start of a new upload flow."""
+    pages = [page for page in ctx.pages if not page.is_closed()]
+    return next((page for page in pages if match in page.url), None) or (pages[0] if pages else ctx.new_page())
 
 
 def yt_fill_schedule(pg, when):
@@ -114,12 +119,12 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
     when = None if now else (datetime.datetime.strptime(vid["schedule"], "%Y-%m-%d %H:%M") if vid.get("schedule") else None)
     if not now and when is None:
         sys.exit("youtube: no schedule time and publish_now is not set")
-    on_step("Opening Chrome browser")
+    on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step("Navigating to YouTube Studio")
         pg = get_page(b.contexts[0], "studio.youtube.com") if resume else fresh_page(b.contexts[0], "studio.youtube.com")
-        pg.bring_to_front()
+        track_automation_page(pg)
         if not resume:
             pg.goto(f"https://studio.youtube.com/channel/{CHANNEL}/videos/upload?d=ud")
             on_step("Uploading video file")
@@ -177,12 +182,12 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
         when = datetime.datetime.combine(datetime.date.today(), datetime.datetime.strptime(at, "%H:%M").time()) if at else \
             datetime.datetime.strptime(vid["schedule"], "%Y-%m-%d %H:%M")
     caption = vid["description"].replace(" #shorts", "")
-    on_step("Opening Chrome browser")
+    on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step(f"Navigating to Meta Business Suite ({target})")
         pg = fresh_page(b.contexts[0], "business.facebook.com/latest")
-        pg.bring_to_front()
+        track_automation_page(pg)
         pg.goto(f"https://business.facebook.com/latest/reels_composer?asset_id={PAGE_ASSET}&business_id={BUSINESS}")
         pg.wait_for_selector("text=Reel details", timeout=60000)
         pg.wait_for_timeout(2000)
@@ -277,12 +282,12 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
         if when.minute % 5:
             sys.exit("TikTok schedules in 5-minute steps")
     caption = vid["description"].replace(" #shorts", "")
-    on_step("Opening Chrome browser")
+    on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step("Navigating to TikTok Studio")
         pg = fresh_page(b.contexts[0], "tiktok.com")
-        pg.bring_to_front()
+        track_automation_page(pg)
         pg.goto("https://www.tiktok.com/tiktokstudio/upload?from=webapp")
         on_step("Uploading video file")
         pg.locator("input[type=file]").first.set_input_files(vid["file"], timeout=180000)
@@ -373,7 +378,7 @@ def youtube_thumbnail(title_start, thumb_path):
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         pg = fresh_page(b.contexts[0], "studio.youtube.com")
-        pg.bring_to_front()
+        track_automation_page(pg)
         pg.goto(f"https://studio.youtube.com/channel/{CHANNEL}/videos/short")
         pg.wait_for_selector("ytcp-video-row", timeout=60000)
         pg.wait_for_timeout(2500)
