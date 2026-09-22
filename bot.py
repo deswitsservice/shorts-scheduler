@@ -27,8 +27,12 @@ def start_chrome(urls=()):
         return
     already = subprocess.run(["pgrep", "-f", f"user-data-dir={PROFILE}"], capture_output=True, text=True).stdout.strip()
     if not already:
+        # Positioned off-screen (not minimized/headless) so it keeps rendering normally for the CDP screencast
+        # the web app's Live Automation panel streams, without ever popping up in front of the user. Headless
+        # itself gets detected and blocked by Google/Meta/TikTok logins, so this is the closest thing to invisible.
         subprocess.Popen([CHROME, f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
-                          "--no-first-run", "--no-default-browser-check", *urls],
+                          "--no-first-run", "--no-default-browser-check",
+                          "--window-position=-2400,-2400", "--window-size=1280,900", *urls],
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for _ in range(40):
         if chrome_running():
@@ -39,6 +43,27 @@ def start_chrome(urls=()):
 def login():
     start_chrome(SITES)
     print("Chrome opened. Sign in to YouTube, TikTok and Facebook in that window, then tell Claude. Leave it open.")
+
+
+def show_idle_screen(url="https://www.youtube.com"):
+    """Park the browser on one neutral tab (plain YouTube home) instead of Chrome's own New Tab page, which
+    surfaces the real profile's personal shortcuts/history. Called after startup and after each job finishes."""
+    if not chrome_running():
+        return
+    with sync_playwright() as p:
+        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
+        ctx = b.contexts[0]
+        pages = list(ctx.pages)
+        keep = pages[0] if pages else ctx.new_page()
+        for pg in pages[1:]:
+            try:
+                pg.close(run_before_unload=False)
+            except Exception:
+                pass
+        try:
+            keep.goto(url, timeout=15000, wait_until="domcontentloaded")
+        except Exception:
+            pass
 
 CHANNEL = "UC4gsfYjRlgp36oWy54juMHw"
 
@@ -91,7 +116,7 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
         sys.exit("youtube: no schedule time and publish_now is not set")
     on_step("Opening Chrome browser")
     with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}")
+        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step("Navigating to YouTube Studio")
         pg = get_page(b.contexts[0], "studio.youtube.com") if resume else fresh_page(b.contexts[0], "studio.youtube.com")
         pg.bring_to_front()
@@ -154,7 +179,7 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
     caption = vid["description"].replace(" #shorts", "")
     on_step("Opening Chrome browser")
     with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}")
+        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step(f"Navigating to Meta Business Suite ({target})")
         pg = fresh_page(b.contexts[0], "business.facebook.com/latest")
         pg.bring_to_front()
@@ -254,7 +279,7 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
     caption = vid["description"].replace(" #shorts", "")
     on_step("Opening Chrome browser")
     with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}")
+        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step("Navigating to TikTok Studio")
         pg = fresh_page(b.contexts[0], "tiktok.com")
         pg.bring_to_front()
@@ -346,7 +371,7 @@ def prepare_thumbnail(vid):
 def youtube_thumbnail(title_start, thumb_path):
     """Set a custom thumbnail on an existing SCHEDULED Short (matched by title prefix) in YouTube Studio."""
     with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}")
+        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         pg = fresh_page(b.contexts[0], "studio.youtube.com")
         pg.bring_to_front()
         pg.goto(f"https://studio.youtube.com/channel/{CHANNEL}/videos/short")

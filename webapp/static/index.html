@@ -74,7 +74,7 @@
 
   .plat-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
   .plat-chip { display:flex; align-items:center; gap:7px; border:2px solid var(--line); border-radius:10px; padding:8px 12px; cursor:pointer; font-size:13px; font-weight:600; background:#fbfaf8; position:relative; transition:opacity .12s, border-color .12s, background .12s; }
-  .plat-chip input { display:none; }
+  .plat-chip input { accent-color:#2874ff; }
   .plat-chip .badge { width:20px; height:20px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; flex:none; }
   .plat-chip .tick { position:absolute; top:-7px; right:-7px; width:18px; height:18px; border-radius:50%; background:var(--ok); color:#fff; font-size:10px; display:none; align-items:center; justify-content:center; border:2px solid #fff; }
   .plat-chip.on { border-color:var(--ok); background:#eefdf3; box-shadow:0 1px 4px rgba(47,191,113,.18); }
@@ -108,6 +108,12 @@
   .accounts-row .acct .badge { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; }
   .accounts-row .acct .name { font-weight:600; font-size:12.5px; }
   .accounts-row .acct .st { color:var(--mute); font-size:11px; display:flex; align-items:center; gap:5px; }
+  .browser-off { margin-top:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff6e6; border:1px solid #f3ddab; border-radius:12px; padding:10px 14px; }
+  .browser-off .ic { font-size:16px; flex:none; }
+  .browser-off .msg { color:#8a6a1f; font-size:12.5px; flex:1; min-width:200px; }
+  .browser-off button { flex:none; border:0; border-radius:9px; padding:8px 14px; font:inherit; font-size:12.5px; font-weight:700; color:#fff; cursor:pointer; background:linear-gradient(90deg, var(--accent1), var(--accent2)); }
+  .browser-off button:disabled { opacity:.6; cursor:default; }
+  @media (max-width:480px) { .browser-off { flex-direction:column; align-items:stretch; } .browser-off button { width:100%; } }
 
   /* ---- right column: Live Automation ---- */
   .live-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
@@ -166,6 +172,7 @@
   .summary-bar .plats .badge .tick { position:absolute; bottom:-3px; right:-3px; width:12px; height:12px; border-radius:50%; background:var(--ok); color:#fff; font-size:8px; display:flex; align-items:center; justify-content:center; border:1.5px solid #fff; }
   .summary-bar .plats .badge .tick.fail { background:var(--bad); }
 </style>
+<link rel="stylesheet" href="/static/design.css">
 </head>
 <body>
 <header>
@@ -178,14 +185,14 @@
   </div>
   <div class="right">
     <div class="pill-btn">✨ Good content, brighter days</div>
-    <div class="gear" title="Settings">⚙️</div>
-    <div class="pill-btn">👤 My Account</div>
+
+    <a class="pill-btn" href="#accounts">Account status ↓</a>
   </div>
 </header>
 
 <main>
   <section>
-    <div class="card">
+    <div class="card" id="accounts">
       <div class="card-head">
         <div class="ic" style="background:#fdecea">📋</div>
         <div><h2>Accounts Status</h2><p>Signed in directly in the app's Chrome window — not managed here.</p></div>
@@ -196,9 +203,10 @@
         <div class="acct"><span class="badge" style="background:var(--fb)">f</span><span class="name">Facebook</span><span class="st"><span class="dot" id="d-meta2"></span><span id="t-meta2">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:var(--tt)">♪</span><span class="name">TikTok</span><span class="st"><span class="dot" id="d-tiktok"></span><span id="t-tiktok">checking…</span></span></div>
       </div>
-      <div id="browserOff" class="hint" style="margin-top:12px;display:none">
-        The app's browser isn't running, so nothing is connected and no posts can go out yet.
-        <button type="button" id="startBrowserBtn" style="margin-left:6px;background:var(--text);color:#fff;border:0;border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer">▶ Start browser</button>
+      <div id="browserOff" class="browser-off" style="display:none">
+        <span class="ic">⚠️</span>
+        <span class="msg">The app's browser isn't running, so nothing is connected and no posts can go out yet.</span>
+        <button type="button" id="startBrowserBtn">▶ Start browser</button>
       </div>
     </div>
 
@@ -212,28 +220,28 @@
           <label class="field-label">Video <span class="req">*</span> <span class="hint" style="float:right;font-weight:400">Vertical (9:16) · 30–60s</span></label>
           <div class="uploads">
             <div class="dropcard" id="videoCard">
-              <button type="button" class="clear" data-clear="file">✕</button>
+              <button type="button" class="clear" aria-label="Remove video" data-clear="file">✕</button>
               <div class="placeholder"><div class="placeholder-ic">🎬</div><div class="ph-title">Upload Video</div><div class="ph-sub">Click or drop a file</div></div>
               <div class="preview"><img id="videoThumb" alt=""><div class="meta"><div class="fname" id="videoName"></div><div class="fsub" id="videoMeta"></div></div></div>
-              <input type="file" id="file" accept="video/*" required>
+              <input aria-label="Upload video" type="file" id="file" accept="video/*" required>
             </div>
             <div class="dropcard" id="thumbCard">
-              <button type="button" class="clear" data-clear="thumb">✕</button>
+              <button type="button" class="clear" aria-label="Remove thumbnail" data-clear="thumb">✕</button>
               <div class="placeholder"><div class="placeholder-ic">🖼️</div><div class="ph-title">Thumbnail / Cover</div><div class="ph-sub">Optional · JPG or PNG</div></div>
               <div class="preview"><img id="thumbPreview" alt=""><div class="meta"><div class="fname" id="thumbName"></div><div class="fsub" id="thumbMeta"></div></div></div>
-              <input type="file" id="thumb" accept="image/png,image/jpeg">
+              <input aria-label="Upload thumbnail" type="file" id="thumb" accept="image/png,image/jpeg">
             </div>
           </div>
           <div class="row chk-row"><input type="checkbox" id="thumbTitle" checked><span class="t">Put the title in the middle of the picture</span></div>
 
           <label class="field-label">Title <span class="req">*</span><span class="counter" id="titleCount">0/100</span></label>
-          <input type="text" id="title" maxlength="140" placeholder="Good Things Take Time ❤️" required>
+          <input type="text" id="title" aria-label="Title" maxlength="140" placeholder="Good Things Take Time ❤️" required>
 
           <label class="field-label">Description / Caption<span class="counter" id="descCount">0 characters</span></label>
-          <textarea id="desc" placeholder="A little reminder that everything happens at the right time."></textarea>
+          <textarea id="desc" aria-label="Description / Caption" placeholder="A little reminder that everything happens at the right time."></textarea>
 
           <label class="field-label">Tags (comma separated)<span class="counter" id="tagCount">0 hashtags</span></label>
-          <input type="text" id="tags" placeholder="love, motivation, life, quotes, inspiration">
+          <input type="text" id="tags" aria-label="Tags" placeholder="love, motivation, life, quotes, inspiration">
           <div class="hint">We'll automatically convert these to hashtags.</div>
 
           <label class="field-label">Post to</label>
@@ -266,7 +274,7 @@
               <div class="d">Publish immediately after processing.</div></label>
             <label class="choice-card on" id="modeSchedCard"><input type="radio" name="mode" value="schedule" checked><span class="t">Schedule for later</span>
               <div class="d">Pick a date and time.</div>
-              <div class="schedule-fields"><input type="datetime-local" id="when"></div>
+              <div class="schedule-fields"><input type="datetime-local" id="when" aria-label="Publish date and time"></div>
             </label>
           </div>
 
@@ -276,7 +284,7 @@
           </div>
 
           <button type="submit" id="go">📤 <span id="goLabel">Schedule</span></button>
-          <div id="msg"></div>
+          <div id="msg" role="status" aria-live="polite"></div>
         </form>
       </div>
     </div>
@@ -317,7 +325,6 @@
         <div class="log-console" id="logConsole"><div class="empty-note">Nothing logged yet.</div></div>
       </div>
     </div>
-  </section>
 
   <div class="card summary-bar" id="summaryBar" hidden>
     <div class="thumb-ph" id="summaryThumbPh">🎬</div>
@@ -325,6 +332,7 @@
     <div class="info"><b id="summaryTitle">—</b><span id="summaryWhen">—</span></div>
     <div class="plats" id="summaryPlats"></div>
   </div>
+  </section>
 </main>
 
 <script>
@@ -342,14 +350,14 @@ async function refreshAccounts() {
   try {
     const a = await (await fetch('/api/accounts')).json();
     chromeIsRunning = !!a.chrome;
-    document.getElementById('browserOff').style.display = chromeIsRunning ? 'none' : 'block';
+    document.getElementById('browserOff').style.display = chromeIsRunning ? 'none' : 'flex';
     const set = (dotId, textId, on, onText, offText) => {
       document.getElementById(dotId).classList.toggle('on', !!on);
       document.getElementById(textId).textContent = chromeIsRunning ? (on ? onText : offText) : 'browser off';
     };
     set('d-youtube', 't-youtube', a.youtube, 'Connected', 'Not connected');
-    set('d-meta1', 't-meta1', a.meta, 'Connected', 'Not connected');
-    set('d-meta2', 't-meta2', a.meta, 'Connected', 'Not connected');
+    set('d-meta1', 't-meta1', a.meta, 'Session detected', 'Not connected');
+    set('d-meta2', 't-meta2', a.meta, 'Session detected', 'Not connected');
     set('d-tiktok', 't-tiktok', a.tiktok, 'Connected', 'Not connected');
   } catch (e) {}
 }
@@ -462,6 +470,7 @@ document.getElementById('desc').addEventListener('input', syncCounts);
 document.getElementById('tags').addEventListener('input', syncCounts);
 document.getElementById('title').addEventListener('input', syncCounts);
 
+document.querySelectorAll('#mfkGroup .choice-card').forEach(c => c.classList.toggle('on', c.querySelector('input').checked));
 syncMode(); syncMfk(); syncCounts();
 (() => { const d = new Date(Date.now() + 60 * 60000); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
   const p = n => String(n).padStart(2, '0');
@@ -505,8 +514,10 @@ document.getElementById('form').addEventListener('submit', async e => {
 /* ---------- live browser view (read-only) ---------- */
 const canvas = document.getElementById('screen'), cctx = canvas.getContext('2d'), canvasWrap = document.getElementById('canvasWrap');
 const canvasOverlay = document.getElementById('canvasOverlay');
-let frameW = 1100, frameH = 700, ws, wsRetryMs = 2000;
+let frameW = 1100, frameH = 700, ws, wsRetryMs = 2000, wsTimer;
 function connectWs() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  clearTimeout(wsTimer);
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
@@ -527,7 +538,11 @@ function connectWs() {
     };
     img.src = 'data:image/jpeg;base64,' + m.d;
   };
-  ws.onclose = () => setTimeout(connectWs, wsRetryMs);
+  ws.onclose = () => {
+    canvasWrap.classList.remove('has-frame');
+    canvasOverlay.textContent = 'Browser view disconnected. Reconnecting…';
+    wsTimer = setTimeout(connectWs, wsRetryMs);
+  };
   ws.onerror = () => {};
 }
 connectWs();
@@ -540,13 +555,14 @@ async function refreshJobs() {
   let js;
   try { js = await (await fetch('/api/jobs')).json(); } catch (e) { return; }
   if (!js.length) return;
-  const job = js[0];
+  const job = js.find(j => j.current_platform && !j.finished) || js.find(j => !j.finished) || js[0];
+  const failed = Object.values(job.steps).some(s => s.state === 'failed');
 
   // status pill
   const pill = document.getElementById('statusPill'), stxt = document.getElementById('statusText');
   const running = job.current_platform && !job.finished;
   pill.className = 'status-pill ' + (running ? 'running' : 'idle');
-  stxt.textContent = running ? `Running… ${elapsed(job.started)}` : (job.finished ? 'Idle' : 'Idle');
+  stxt.textContent = running ? `Running… ${elapsed(job.started)}` : (job.finished ? (failed ? 'Failed' : (job.dry ? 'Preview complete' : 'Complete')) : 'Queued');
 
   // per-platform tabs
   document.querySelectorAll('.plat-tab').forEach(tab => {
@@ -562,10 +578,10 @@ async function refreshJobs() {
     ? `Chrome — ${PLAT_NAME[job.current_platform]}` : (job.finished ? 'Chrome — idle' : 'Chrome — idle');
 
   // steps + log for the active (or last) platform
-  const focusPlat = job.current_platform || job.platforms[job.platforms.length - 1];
+  const focusPlat = job.current_platform || job.platforms.find(p => job.steps[p].state === 'failed') || job.platforms[job.platforms.length - 1];
   const step = job.steps[focusPlat];
   const stepsEl = document.getElementById('stepsList'), logEl = document.getElementById('logConsole');
-  if (step && step.log && step.log.length) {
+  if (step && ((step.log && step.log.length) || step.error)) {
     stepsEl.innerHTML = step.log.map((entry, i) => {
       const isLast = i === step.log.length - 1;
       const failed = isLast && step.state === 'failed';
@@ -589,7 +605,7 @@ async function refreshJobs() {
   const bar = document.getElementById('summaryBar');
   bar.hidden = false;
   document.getElementById('summaryTitle').textContent = job.title;
-  document.getElementById('summaryWhen').textContent = job.when === 'Now' ? 'Publishing now' : `Scheduled for ${job.when}`;
+  document.getElementById('summaryWhen').textContent = (job.dry ? 'Preview only · ' : '') + (failed ? 'Failed · ' : job.finished ? 'Completed · ' : running ? 'In progress · ' : 'Queued · ') + (job.when === 'Now' ? 'Post now' : `Requested time: ${job.when}`);
   const thumbImg = document.getElementById('summaryThumb'), thumbPh = document.getElementById('summaryThumbPh');
   if (job.thumbnail_url) { thumbImg.src = job.thumbnail_url; thumbImg.hidden = false; thumbPh.hidden = true; }
   else { thumbImg.hidden = true; thumbPh.hidden = false; }
