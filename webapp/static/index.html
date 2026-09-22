@@ -233,7 +233,7 @@
               <input aria-label="Upload thumbnail" type="file" id="thumb" accept="image/png,image/jpeg">
             </div>
           </div>
-          <div class="row chk-row"><input type="checkbox" id="thumbTitle" checked><span class="t">Put the title in the middle of the picture</span></div>
+          <div class="row chk-row"><input type="checkbox" id="thumbTitle" checked><label for="thumbTitle" class="t">Put the title in the middle of the picture</label><span id="thumbTitleHint" class="hint"></span></div>
 
           <label class="field-label">Title <span class="req">*</span><span class="counter" id="titleCount">0/100</span></label>
           <input type="text" id="title" aria-label="Title" maxlength="140" placeholder="Good Things Take Time ❤️" required>
@@ -266,7 +266,7 @@
 
           <div class="row chk-row" style="margin-top:16px">
             <input type="checkbox" id="story">
-            <span><span class="t">Also share to story</span> <span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3));width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">◎</span> <span class="badge" style="background:var(--fb);width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">f</span><br><span class="d">Share this Reel to your Instagram and Facebook stories too.</span></span>
+            <span><label for="story" class="t">Also share to story</label> <span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3));width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">◎</span> <span class="badge" style="background:var(--fb);width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">f</span><br><span class="d">Share this Reel to your Instagram and Facebook stories too.</span></span>
           </div>
 
           <label class="field-label" style="margin-top:16px">Publish timing</label>
@@ -388,10 +388,10 @@ function humanSize(b) {
 }
 function setupDropcard(cardId, inputId, onFile, onClear) {
   const card = document.getElementById(cardId), input = document.getElementById(inputId);
-  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); });
+  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); syncOptions(); });
   card.querySelector('.clear').addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();
-    input.value = ''; card.classList.remove('filled'); onClear();
+    input.value = ''; card.classList.remove('filled'); onClear(); syncOptions();
   });
 }
 setupDropcard('videoCard', 'file', (f) => {
@@ -422,8 +422,18 @@ setupDropcard('thumbCard', 'thumb', (f) => {
 /* ---------- platform chips ---------- */
 document.querySelectorAll('.plat-chip').forEach(chip => {
   const input = chip.querySelector('input');
-  input.addEventListener('change', () => { chip.classList.toggle('on', input.checked); syncMfk(); syncCounts(); });
+  input.addEventListener('change', () => { chip.classList.toggle('on', input.checked); syncMfk(); syncCounts(); syncOptions(); });
 });
+
+function syncOptions() {
+  const hasThumb = !!document.getElementById('thumb').files.length;
+  document.getElementById('thumbTitle').disabled = !hasThumb;
+  document.getElementById('thumbTitleHint').textContent = hasThumb ? '' : 'Choose a cover image to enable.';
+  const story = document.getElementById('story');
+  story.disabled = !checkedPlatforms().some(p => p === 'instagram' || p === 'facebook');
+  if (story.disabled) story.checked = false;
+  story.closest('.chk-row').style.opacity = story.disabled ? '.55' : '1';
+}
 
 /* ---------- made for kids visibility ---------- */
 function syncMfk() {
@@ -501,7 +511,7 @@ document.getElementById('tags').addEventListener('input', syncCounts);
 document.getElementById('title').addEventListener('input', syncCounts);
 
 document.querySelectorAll('#mfkGroup .choice-card').forEach(c => c.classList.toggle('on', c.querySelector('input').checked));
-syncMode(); syncMfk(); syncCounts();
+syncMode(); syncMfk(); syncCounts(); syncOptions();
 (() => { const d = new Date(Date.now() + 60 * 60000); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
   const p = n => String(n).padStart(2, '0');
   whenEl.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; })();
@@ -522,7 +532,7 @@ document.getElementById('form').addEventListener('submit', async e => {
   const fd = new FormData();
   fd.append('file', document.getElementById('file').files[0]);
   if (document.getElementById('thumb').files[0]) fd.append('thumbnail', document.getElementById('thumb').files[0]);
-  fd.append('thumb_title', document.getElementById('thumbTitle').checked ? 'true' : 'false');
+  fd.append('thumb_title', !document.getElementById('thumbTitle').disabled && document.getElementById('thumbTitle').checked ? 'true' : 'false');
   fd.append('title', document.getElementById('title').value);
   fd.append('description', document.getElementById('desc').value);
   fd.append('tags', document.getElementById('tags').value);

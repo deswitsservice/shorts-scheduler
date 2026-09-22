@@ -43,6 +43,16 @@ with sync_playwright() as p:
     page.locator('input[name=mode][value=now]').check()
     assert page.locator('#when').is_disabled()
     assert page.locator('#when').evaluate('(el)=>el.validationMessage') == ''
+    assert page.locator('#thumbTitle').is_disabled()
+    page.locator('#thumb').set_input_files({'name':'cover.png','mimeType':'image/png','buffer':b'placeholder'})
+    assert page.locator('#thumbTitle').is_enabled()
+    page.locator('[data-clear=thumb]').click()
+    assert page.locator('#thumbTitle').is_disabled()
+    page.locator('input[name=p][value=instagram]').uncheck()
+    page.locator('input[name=p][value=facebook]').uncheck()
+    assert page.locator('#story').is_disabled()
+    page.locator('input[name=p][value=instagram]').check()
+    assert page.locator('#story').is_enabled()
     jobs[:]=[job('failed job','failed',error='Browser unavailable')]
     page.evaluate('refreshJobs()')
     assert 'Browser unavailable' in page.locator('#logConsole').inner_text()
