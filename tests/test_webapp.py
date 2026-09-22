@@ -24,6 +24,13 @@ class ScheduleTests(unittest.TestCase):
         server.jobs.clear()
         self.client = TestClient(server.app)
 
+    def test_start_reports_failure_and_does_not_navigate_existing_tabs(self):
+        with patch.object(server.bot, 'start_chrome'), patch.object(server.bot, 'chrome_running', return_value=False), patch.object(server.bot, 'show_idle_screen') as park:
+            response = self.client.post('/api/start')
+        self.assertEqual(response.status_code, 503)
+        self.assertIn('error', response.json())
+        park.assert_not_called()
+
     def request(self, **changes):
         data = dict(title='A small promise', platforms='youtube,youtube',
                     mode='now', made_for_kids='false', dry='true')

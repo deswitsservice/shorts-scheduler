@@ -261,8 +261,12 @@ async def start_browser():
     personal shortcuts/history) — startup URLs passed on the command line aren't reliable across Chrome restarts."""
     def _start():
         bot.start_chrome()
-        bot.show_idle_screen()
-    await asyncio.get_running_loop().run_in_executor(None, _start)
+        if not bot.chrome_running():
+            raise RuntimeError("Chrome did not become ready. Check that Chrome is installed and try again.")
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, _start)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)[:300]}, status_code=503)
     return {"ok": True}
 
 
