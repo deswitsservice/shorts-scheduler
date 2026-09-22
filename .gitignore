@@ -1,0 +1,20 @@
+# Real login sessions — never push these (account-hijack risk)
+chrome_profile/
+
+# User media and generated artifacts — large, personal, not source
+uploads/
+shots/
+thumbs/
+queue.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs / one-off run scripts
+*.log
+*.done
+run_all.sh
+
+# OS
+.DS_Store

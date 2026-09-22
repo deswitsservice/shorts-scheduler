@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shorts Scheduler</title>
+<style>
+  :root {
+    --bg:#f4f0ec; --panel:#ffffff; --line:#e7e1da; --text:#2b2420; --mute:#8a7f74;
+    --accent1:#7c5cff; --accent2:#ff6fa5; --accent3:#ff9a56;
+    --ok:#2fbf71; --bad:#e5484d; --warn:#e0a52b;
+    --yt:#ff0033; --ig1:#f58529; --ig2:#dd2a7b; --ig3:#8134af; --fb:#1877f2; --tt:#000000;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header {
+    position:relative; overflow:hidden; padding:22px 26px; color:#fff;
+    background: linear-gradient(100deg, #6a5acd 0%, #b458c9 22%, #ff6f91 45%, #ff9a56 68%, #6dc0e0 100%);
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  }
+  header .brand { display:flex; align-items:center; gap:12px; }
+  header .logo { width:42px; height:42px; border-radius:12px; background:rgba(255,255,255,.22); display:flex; align-items:center; justify-content:center; font-size:20px; backdrop-filter:blur(2px); }
+  header h1 { font-size:22px; margin:0; letter-spacing:-.01em; }
+  header .tag { font-style:italic; opacity:.92; font-size:14px; margin-top:2px; }
+  header .right { display:flex; align-items:center; gap:10px; }
+  header .pill-btn { background:rgba(255,255,255,.22); border:1px solid rgba(255,255,255,.35); color:#fff; border-radius:20px; padding:8px 14px; font:inherit; font-size:13px; display:flex; align-items:center; gap:6px; cursor:default; }
+  header .gear { width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.22); border:1px solid rgba(255,255,255,.35); display:flex; align-items:center; justify-content:center; font-size:16px; cursor:default; }
+
+  main { max-width:1320px; margin:0 auto; padding:20px; display:grid; grid-template-columns: minmax(360px,540px) 1fr; gap:18px; align-items:start; }
+  @media (max-width: 1040px) { main { grid-template-columns: 1fr; } }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 1px 2px rgba(30,20,10,.04); }
+  .card + .card { margin-top:16px; }
+  .card-head { display:flex; align-items:center; gap:10px; margin-bottom:4px; }
+  .card-head .ic { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:16px; flex:none; }
+  .card-head h2 { font-size:15px; margin:0; }
+  .card-head p { margin:2px 0 0; color:var(--mute); font-size:12.5px; }
+  .card-body { margin-top:14px; }
+
+  label.field-label { display:block; margin:12px 0 5px; color:var(--text); font-size:12.5px; font-weight:600; }
+  label.field-label .req { color:var(--bad); }
+  .counter { color:var(--mute); font-size:11.5px; float:right; font-weight:500; }
+  .counter.warn { color:var(--bad); }
+  input[type=text], input[type=datetime-local], textarea {
+    width:100%; background:#fbfaf8; border:1px solid var(--line); color:var(--text); border-radius:10px;
+    padding:10px 12px; font:inherit; font-size:13.5px;
+  }
+  input:focus, textarea:focus { outline:2px solid #cabcff; outline-offset:0; border-color:#a893ff; }
+  textarea { min-height:88px; resize:vertical; }
+  .hint { color:var(--mute); font-size:12px; margin-top:6px; }
+  .hint.warn { color:var(--bad); }
+
+  .uploads { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:480px) { .uploads { grid-template-columns:1fr; } }
+  .dropcard { border:1.5px dashed var(--line); border-radius:12px; padding:12px; text-align:center; cursor:pointer; background:#fbfaf8; transition:border-color .15s; position:relative; min-height:118px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .dropcard:hover { border-color:#c9bdfd; }
+  .dropcard input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .dropcard .placeholder-ic { font-size:22px; color:var(--mute); }
+  .dropcard .ph-title { font-size:12.5px; font-weight:600; margin-top:6px; }
+  .dropcard .ph-sub { font-size:11px; color:var(--mute); margin-top:2px; }
+  .dropcard .preview { display:none; width:100%; align-items:center; gap:10px; text-align:left; }
+  .dropcard.filled .preview { display:flex; }
+  .dropcard.filled .placeholder { display:none; }
+  .dropcard .preview img { width:52px; height:52px; object-fit:cover; border-radius:8px; flex:none; background:#000; }
+  .dropcard .preview .meta { min-width:0; flex:1; }
+  .dropcard .preview .fname { font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dropcard .preview .fsub { font-size:11px; color:var(--mute); }
+  .dropcard .clear { position:absolute; top:6px; right:6px; width:20px; height:20px; border-radius:50%; background:#00000012; border:0; display:none; align-items:center; justify-content:center; cursor:pointer; font-size:11px; z-index:2; }
+  .dropcard.filled .clear { display:flex; }
+  .row.chk-row { display:flex; align-items:flex-start; gap:8px; margin-top:10px; }
+  .row.chk-row input { margin-top:3px; }
+  .row.chk-row .t { font-size:13px; }
+  .row.chk-row .d { color:var(--mute); font-size:11.5px; }
+
+  .plat-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; }
+  .plat-chip { display:flex; align-items:center; gap:7px; border:2px solid var(--line); border-radius:10px; padding:8px 12px; cursor:pointer; font-size:13px; font-weight:600; background:#fbfaf8; position:relative; transition:opacity .12s, border-color .12s, background .12s; }
+  .plat-chip input { display:none; }
+  .plat-chip .badge { width:20px; height:20px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; flex:none; }
+  .plat-chip .tick { position:absolute; top:-7px; right:-7px; width:18px; height:18px; border-radius:50%; background:var(--ok); color:#fff; font-size:10px; display:none; align-items:center; justify-content:center; border:2px solid #fff; }
+  .plat-chip.on { border-color:var(--ok); background:#eefdf3; box-shadow:0 1px 4px rgba(47,191,113,.18); }
+  .plat-chip.on .tick { display:flex; }
+  .plat-chip:not(.on) { opacity:.45; }
+  .plat-chip:not(.on) .badge { filter:grayscale(1); }
+
+  .choice-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+  @media (max-width:480px) { .choice-grid { grid-template-columns:1fr; } }
+  .choice-card { border:1.5px solid var(--line); border-radius:12px; padding:12px; cursor:pointer; background:#fbfaf8; }
+  .choice-card input { margin-right:8px; }
+  .choice-card .t { font-size:13px; font-weight:600; }
+  .choice-card .d { color:var(--mute); font-size:11.5px; margin-top:4px; line-height:1.4; }
+  .choice-card.on { border-color:#a893ff; background:#f4f0ff; }
+
+  .schedule-fields { margin-top:10px; }
+
+  button[type=submit] {
+    width:100%; margin-top:16px; border:0; border-radius:14px; padding:14px; font:inherit; font-weight:700; font-size:14.5px;
+    color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+    background:linear-gradient(90deg, var(--accent1), var(--accent2));
+  }
+  button[type=submit]:disabled { opacity:.55; cursor:default; }
+  #msg { margin-top:10px; color:var(--mute); font-size:12.5px; min-height:16px; }
+  #msg.err { color:var(--bad); }
+
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--bad); display:inline-block; }
+  .dot.on { background:var(--ok); }
+  .accounts-row { display:flex; gap:22px; flex-wrap:wrap; margin-top:10px; }
+  .accounts-row .acct { display:flex; align-items:center; gap:8px; font-size:13px; }
+  .accounts-row .acct .badge { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; }
+  .accounts-row .acct .name { font-weight:600; font-size:12.5px; }
+  .accounts-row .acct .st { color:var(--mute); font-size:11px; display:flex; align-items:center; gap:5px; }
+
+  /* ---- right column: Live Automation ---- */
+  .live-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .status-pill { border-radius:20px; padding:6px 12px; font-size:12px; font-weight:700; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+  .status-pill.running { background:#ffe6e6; color:#c53030; }
+  .status-pill.idle { background:#eee; color:var(--mute); }
+  .status-pill .dot { width:7px; height:7px; }
+  .status-pill.running .dot { animation:pulse 1.1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  .plat-tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:14px; }
+  @media (max-width:600px) { .plat-tabs { grid-template-columns:1fr 1fr; } }
+  .plat-tab { border:1.5px solid var(--line); border-radius:10px; padding:8px 6px; text-align:center; background:#fbfaf8; }
+  .plat-tab.active { border-color:#e5484d; background:#fff3f3; }
+  .plat-tab .badge { width:22px; height:22px; border-radius:6px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; margin:0 auto 4px; }
+  .plat-tab .nm { font-size:11.5px; font-weight:700; }
+  .plat-tab .st { font-size:10.5px; color:var(--mute); }
+  .plat-tab.active .st { color:#c53030; }
+
+  .browser-frame { margin-top:14px; border-radius:12px; overflow:hidden; border:1px solid #2a2a2a; background:#111; }
+  .browser-titlebar { background:#e7e7e7; padding:8px 10px; display:flex; align-items:center; gap:8px; }
+  .browser-titlebar .tl { display:flex; gap:6px; }
+  .browser-titlebar .tl span { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .browser-titlebar .t1 { background:#ff5f57; } .browser-titlebar .t2 { background:#febc2e; } .browser-titlebar .t3 { background:#28c840; }
+  .browser-titlebar .title { font-size:12px; color:#555; margin-left:4px; }
+  .canvas-wrap { position:relative; background:#000; aspect-ratio:16/10; }
+  .canvas-wrap canvas { width:100%; height:100%; display:block; object-fit:contain; pointer-events:none; }
+  .canvas-wrap .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#8a8a8a; font-size:13px; text-align:center; padding:20px; background:#111; }
+  .canvas-wrap.has-frame .overlay { display:none; }
+  .view-only-tag { position:absolute; top:8px; right:8px; background:rgba(0,0,0,.55); color:#fff; font-size:10.5px; padding:3px 8px; border-radius:10px; }
+
+  .steps-log-grid { display:grid; grid-template-columns:1fr; gap:12px; margin-top:14px; }
+  .subcard { border:1px solid var(--line); border-radius:12px; padding:12px; background:#fbfaf8; }
+  .subcard h3 { font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--mute); margin:0 0 8px; }
+  .steps-list { list-style:none; margin:0; padding:0; max-height:180px; overflow-y:auto; }
+  .steps-list li { display:flex; align-items:center; gap:8px; padding:4px 0; font-size:12.5px; }
+  .steps-list .ic { width:16px; height:16px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font-size:10px; }
+  .steps-list .ic.done { background:var(--ok); color:#fff; }
+  .steps-list .ic.now { border:2px solid var(--accent1); }
+  .steps-list .ic.fail { background:var(--bad); color:#fff; }
+  .log-console { background:#14161c; color:#c9d1d9; border-radius:10px; padding:10px; font:12px/1.6 ui-monospace,Menlo,Consolas,monospace; max-height:180px; overflow-y:auto; }
+  .log-console .line { white-space:pre-wrap; word-break:break-word; }
+  .log-console .line .ts { color:#6a7180; }
+  .log-console .line.latest { color:#ffd479; }
+  .log-console .line.err { color:#ff8080; }
+  .empty-note { color:var(--mute); font-size:12.5px; }
+
+  .summary-bar { margin-top:16px; grid-column:1/-1; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .summary-bar[hidden] { display:none; }
+  .summary-bar img.thumb { width:52px; height:80px; object-fit:cover; border-radius:8px; background:#eee; flex:none; }
+  .summary-bar .thumb-ph { width:52px; height:80px; border-radius:8px; background:#eee; display:flex; align-items:center; justify-content:center; color:var(--mute); font-size:18px; flex:none; }
+  .summary-bar .info b { display:block; font-size:13.5px; }
+  .summary-bar .info span { color:var(--mute); font-size:12px; }
+  .summary-bar .plats { margin-left:auto; display:flex; gap:6px; }
+  .summary-bar .plats .badge { width:24px; height:24px; border-radius:7px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:11px; position:relative; }
+  .summary-bar .plats .badge .tick { position:absolute; bottom:-3px; right:-3px; width:12px; height:12px; border-radius:50%; background:var(--ok); color:#fff; font-size:8px; display:flex; align-items:center; justify-content:center; border:1.5px solid #fff; }
+  .summary-bar .plats .badge .tick.fail { background:var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">❤️</div>
+    <div>
+      <h1>Shorts Scheduler</h1>
+      <div class="tag">Create. Schedule. Inspire.</div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="pill-btn">✨ Good content, brighter days</div>
+    <div class="gear" title="Settings">⚙️</div>
+    <div class="pill-btn">👤 My Account</div>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <div class="card-head">
+        <div class="ic" style="background:#fdecea">📋</div>
+        <div><h2>Accounts Status</h2><p>Signed in directly in the app's Chrome window — not managed here.</p></div>
+      </div>
+      <div class="accounts-row">
+        <div class="acct"><span class="badge" style="background:var(--yt)">▶</span><span class="name">YouTube</span><span class="st"><span class="dot" id="d-youtube"></span><span id="t-youtube">checking…</span></span></div>
+        <div class="acct"><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span><span class="name">Instagram</span><span class="st"><span class="dot" id="d-meta1"></span><span id="t-meta1">checking…</span></span></div>
+        <div class="acct"><span class="badge" style="background:var(--fb)">f</span><span class="name">Facebook</span><span class="st"><span class="dot" id="d-meta2"></span><span id="t-meta2">checking…</span></span></div>
+        <div class="acct"><span class="badge" style="background:var(--tt)">♪</span><span class="name">TikTok</span><span class="st"><span class="dot" id="d-tiktok"></span><span id="t-tiktok">checking…</span></span></div>
+      </div>
+      <div id="browserOff" class="hint" style="margin-top:12px;display:none">
+        The app's browser isn't running, so nothing is connected and no posts can go out yet.
+        <button type="button" id="startBrowserBtn" style="margin-left:6px;background:var(--text);color:#fff;border:0;border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer">▶ Start browser</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="ic" style="background:#eef0ff">📝</div>
+        <div><h2>New Post</h2><p>Fill in the details and share your message with the world.</p></div>
+      </div>
+      <div class="card-body">
+        <form id="form">
+          <label class="field-label">Video <span class="req">*</span> <span class="hint" style="float:right;font-weight:400">Vertical (9:16) · 30–60s</span></label>
+          <div class="uploads">
+            <div class="dropcard" id="videoCard">
+              <button type="button" class="clear" data-clear="file">✕</button>
+              <div class="placeholder"><div class="placeholder-ic">🎬</div><div class="ph-title">Upload Video</div><div class="ph-sub">Click or drop a file</div></div>
+              <div class="preview"><img id="videoThumb" alt=""><div class="meta"><div class="fname" id="videoName"></div><div class="fsub" id="videoMeta"></div></div></div>
+              <input type="file" id="file" accept="video/*" required>
+            </div>
+            <div class="dropcard" id="thumbCard">
+              <button type="button" class="clear" data-clear="thumb">✕</button>
+              <div class="placeholder"><div class="placeholder-ic">🖼️</div><div class="ph-title">Thumbnail / Cover</div><div class="ph-sub">Optional · JPG or PNG</div></div>
+              <div class="preview"><img id="thumbPreview" alt=""><div class="meta"><div class="fname" id="thumbName"></div><div class="fsub" id="thumbMeta"></div></div></div>
+              <input type="file" id="thumb" accept="image/png,image/jpeg">
+            </div>
+          </div>
+          <div class="row chk-row"><input type="checkbox" id="thumbTitle" checked><span class="t">Put the title in the middle of the picture</span></div>
+
+          <label class="field-label">Title <span class="req">*</span><span class="counter" id="titleCount">0/100</span></label>
+          <input type="text" id="title" maxlength="140" placeholder="Good Things Take Time ❤️" required>
+
+          <label class="field-label">Description / Caption<span class="counter" id="descCount">0 characters</span></label>
+          <textarea id="desc" placeholder="A little reminder that everything happens at the right time."></textarea>
+
+          <label class="field-label">Tags (comma separated)<span class="counter" id="tagCount">0 hashtags</span></label>
+          <input type="text" id="tags" placeholder="love, motivation, life, quotes, inspiration">
+          <div class="hint">We'll automatically convert these to hashtags.</div>
+
+          <label class="field-label">Post to</label>
+          <div class="plat-grid" id="platGrid">
+            <label class="plat-chip on"><input type="checkbox" name="p" value="youtube" checked><span class="badge" style="background:var(--yt)">▶</span>YouTube<span class="tick">✓</span></label>
+            <label class="plat-chip on"><input type="checkbox" name="p" value="instagram" checked><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span>Instagram<span class="tick">✓</span></label>
+            <label class="plat-chip on"><input type="checkbox" name="p" value="facebook" checked><span class="badge" style="background:var(--fb)">f</span>Facebook<span class="tick">✓</span></label>
+            <label class="plat-chip on"><input type="checkbox" name="p" value="tiktok" checked><span class="badge" style="background:var(--tt)">♪</span>TikTok<span class="tick">✓</span></label>
+          </div>
+
+          <div id="mfkGroup">
+            <label class="field-label" style="margin-top:16px">Made for kids? (YouTube) <span class="req">*</span></label>
+            <div class="hint" style="margin-top:0">This helps YouTube apply the right restrictions. Required when posting to YouTube.</div>
+            <div class="choice-grid">
+              <label class="choice-card"><input type="radio" name="mfk" value="true" required><span class="t">Yes, it's made for kids</span>
+                <div class="d">Features like personalized ads and notifications won't be available.</div></label>
+              <label class="choice-card"><input type="radio" name="mfk" value="false" required checked><span class="t">No, it's not made for kids</span>
+                <div class="d">Comments and personalized ads stay enabled.</div></label>
+            </div>
+          </div>
+
+          <div class="row chk-row" style="margin-top:16px">
+            <input type="checkbox" id="story">
+            <span><span class="t">Also share to story</span> <span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3));width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">◎</span> <span class="badge" style="background:var(--fb);width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">f</span><br><span class="d">Share this Reel to your Instagram and Facebook stories too.</span></span>
+          </div>
+
+          <label class="field-label" style="margin-top:16px">Publish timing</label>
+          <div class="choice-grid">
+            <label class="choice-card" id="modeNowCard"><input type="radio" name="mode" value="now"><span class="t">Post now</span>
+              <div class="d">Publish immediately after processing.</div></label>
+            <label class="choice-card on" id="modeSchedCard"><input type="radio" name="mode" value="schedule" checked><span class="t">Schedule for later</span>
+              <div class="d">Pick a date and time.</div>
+              <div class="schedule-fields"><input type="datetime-local" id="when"></div>
+            </label>
+          </div>
+
+          <div class="row chk-row" style="margin-top:16px">
+            <input type="checkbox" id="dry">
+            <span><span class="t">🧪 Preview only (dry run)</span><br><span class="d">Fill in every platform's form without pressing the final publish/schedule button.</span></span>
+          </div>
+
+          <button type="submit" id="go">📤 <span id="goLabel">Schedule</span></button>
+          <div id="msg"></div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="live-head">
+      <div class="card-head">
+        <div class="ic" style="background:#eef0ff">⚡</div>
+        <div><h2>Live Automation</h2><p>Watch the automation work, one platform at a time — view only.</p></div>
+      </div>
+      <div class="status-pill idle" id="statusPill"><span class="dot"></span><span id="statusText">Idle</span></div>
+    </div>
+
+    <div class="plat-tabs" id="platTabs">
+      <div class="plat-tab" data-p="youtube"><span class="badge" style="background:var(--yt)">▶</span><div class="nm">YouTube</div><div class="st">—</div></div>
+      <div class="plat-tab" data-p="instagram"><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span><div class="nm">Instagram</div><div class="st">—</div></div>
+      <div class="plat-tab" data-p="facebook"><span class="badge" style="background:var(--fb)">f</span><div class="nm">Facebook</div><div class="st">—</div></div>
+      <div class="plat-tab" data-p="tiktok"><span class="badge" style="background:var(--tt)">♪</span><div class="nm">TikTok</div><div class="st">—</div></div>
+    </div>
+
+    <div class="browser-frame">
+      <div class="browser-titlebar"><span class="tl"><span class="t1"></span><span class="t2"></span><span class="t3"></span></span><span class="title" id="browserTitle">Chrome — idle</span></div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="screen" width="1100" height="700"></canvas>
+        <div class="overlay" id="canvasOverlay">No automation running. Submit the form to watch it work here.</div>
+        <div class="view-only-tag">View only</div>
+      </div>
+    </div>
+
+    <div class="steps-log-grid">
+      <div class="subcard">
+        <h3>Automation Steps</h3>
+        <ul class="steps-list" id="stepsList"><li class="empty-note">Nothing running yet.</li></ul>
+      </div>
+      <div class="subcard">
+        <h3>Live Log</h3>
+        <div class="log-console" id="logConsole"><div class="empty-note">Nothing logged yet.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="card summary-bar" id="summaryBar" hidden>
+    <div class="thumb-ph" id="summaryThumbPh">🎬</div>
+    <img class="thumb" id="summaryThumb" hidden>
+    <div class="info"><b id="summaryTitle">—</b><span id="summaryWhen">—</span></div>
+    <div class="plats" id="summaryPlats"></div>
+  </div>
+</main>
+
+<script>
+const PLAT_BADGE = {
+  youtube: { bg: 'var(--yt)', ic: '▶' },
+  instagram: { bg: 'linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))', ic: '◎' },
+  facebook: { bg: 'var(--fb)', ic: 'f' },
+  tiktok: { bg: 'var(--tt)', ic: '♪' },
+};
+const PLAT_NAME = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
+
+/* ---------- accounts ---------- */
+let chromeIsRunning = false;
+async function refreshAccounts() {
+  try {
+    const a = await (await fetch('/api/accounts')).json();
+    chromeIsRunning = !!a.chrome;
+    document.getElementById('browserOff').style.display = chromeIsRunning ? 'none' : 'block';
+    const set = (dotId, textId, on, onText, offText) => {
+      document.getElementById(dotId).classList.toggle('on', !!on);
+      document.getElementById(textId).textContent = chromeIsRunning ? (on ? onText : offText) : 'browser off';
+    };
+    set('d-youtube', 't-youtube', a.youtube, 'Connected', 'Not connected');
+    set('d-meta1', 't-meta1', a.meta, 'Connected', 'Not connected');
+    set('d-meta2', 't-meta2', a.meta, 'Connected', 'Not connected');
+    set('d-tiktok', 't-tiktok', a.tiktok, 'Connected', 'Not connected');
+  } catch (e) {}
+}
+setInterval(refreshAccounts, 6000); refreshAccounts();
+
+document.getElementById('startBrowserBtn').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = 'Starting…';
+  try {
+    await fetch('/api/start', { method: 'POST' });
+    setTimeout(() => { refreshAccounts(); connectWs(); }, 2500);
+  } finally {
+    setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Start browser'; }, 3000);
+  }
+});
+
+/* ---------- file previews ---------- */
+function humanSize(b) {
+  if (b > 1e6) return (b / 1e6).toFixed(1) + ' MB';
+  if (b > 1e3) return (b / 1e3).toFixed(0) + ' KB';
+  return b + ' B';
+}
+function setupDropcard(cardId, inputId, onFile, onClear) {
+  const card = document.getElementById(cardId), input = document.getElementById(inputId);
+  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); });
+  card.querySelector('.clear').addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    input.value = ''; card.classList.remove('filled'); onClear();
+  });
+}
+setupDropcard('videoCard', 'file', (f) => {
+  const card = document.getElementById('videoCard');
+  document.getElementById('videoName').textContent = f.name;
+  const v = document.createElement('video');
+  v.preload = 'metadata'; v.muted = true; v.src = URL.createObjectURL(f);
+  v.addEventListener('loadedmetadata', () => {
+    document.getElementById('videoMeta').textContent = `${humanSize(f.size)} · ${v.duration.toFixed(0)}s`;
+    v.currentTime = Math.min(0.2, v.duration / 2);
+  });
+  v.addEventListener('seeked', () => {
+    const c = document.createElement('canvas'); c.width = 80; c.height = 142;
+    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    document.getElementById('videoThumb').src = c.toDataURL('image/jpeg', .7);
+    URL.revokeObjectURL(v.src);
+  });
+  card.classList.add('filled');
+}, () => document.getElementById('videoThumb').src = '');
+setupDropcard('thumbCard', 'thumb', (f) => {
+  const card = document.getElementById('thumbCard');
+  document.getElementById('thumbName').textContent = f.name;
+  document.getElementById('thumbMeta').textContent = humanSize(f.size);
+  document.getElementById('thumbPreview').src = URL.createObjectURL(f);
+  card.classList.add('filled');
+}, () => document.getElementById('thumbPreview').src = '');
+
+/* ---------- platform chips ---------- */
+document.querySelectorAll('.plat-chip').forEach(chip => {
+  const input = chip.querySelector('input');
+  input.addEventListener('change', () => { chip.classList.toggle('on', input.checked); syncMfk(); syncCounts(); });
+});
+
+/* ---------- made for kids visibility ---------- */
+function syncMfk() {
+  const needed = [...document.querySelectorAll('input[name=p]:checked')].some(x => x.value === 'youtube');
+  document.getElementById('mfkGroup').hidden = !needed;
+  document.querySelectorAll('input[name=mfk]').forEach(r => r.required = needed);
+}
+document.querySelectorAll('.choice-card input[name=mfk]').forEach(r => r.addEventListener('change', () => {
+  document.querySelectorAll('#mfkGroup .choice-card').forEach(c => c.classList.toggle('on', c.querySelector('input').checked));
+}));
+
+/* ---------- publish mode ---------- */
+const whenEl = document.getElementById('when');
+function syncMode() {
+  const now = document.querySelector('input[name=mode]:checked').value === 'now';
+  document.getElementById('modeNowCard').classList.toggle('on', now);
+  document.getElementById('modeSchedCard').classList.toggle('on', !now);
+  whenEl.disabled = now; whenEl.closest('.schedule-fields').style.opacity = now ? .4 : 1;
+  document.getElementById('goLabel').textContent = now ? 'Post Now' : 'Schedule';
+}
+document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', syncMode));
+
+/* ---------- live counters (mirrors webapp/server.py limits) ---------- */
+const CAPTION_LIMITS = { youtube: 5000, instagram: 2200, tiktok: 4000 };
+const IG_MAX_HASHTAGS = 30;
+function checkedPlatforms() { return [...document.querySelectorAll('input[name=p]:checked')].map(x => x.value); }
+function fullDescription() {
+  const tags = document.getElementById('tags').value.split(',').map(t => t.trim()).filter(Boolean)
+    .map(t => '#' + t.replace(/^#/, '').replace(/\s+/g, ''));
+  const desc = document.getElementById('desc').value.trim();
+  return (desc + (tags.length ? '\n\n' + tags.join(' ') : '')).trim();
+}
+function syncCounts() {
+  const plats = checkedPlatforms();
+  const full = fullDescription();
+  const limits = plats.map(p => CAPTION_LIMITS[p]).filter(n => n);
+  const tightest = limits.length ? Math.min(...limits) : null;
+  const dEl = document.getElementById('descCount');
+  if (tightest) { dEl.textContent = `${full.length} / ${tightest}`; dEl.classList.toggle('warn', full.length > tightest); }
+  else { dEl.textContent = `${full.length} characters`; dEl.classList.remove('warn'); }
+  const n = (document.getElementById('tags').value.match(/[^,]+/g) || []).filter(t => t.trim()).length;
+  const tEl = document.getElementById('tagCount');
+  const igLimit = plats.includes('instagram');
+  tEl.textContent = igLimit ? `${n} / ${IG_MAX_HASHTAGS} hashtags` : `${n} hashtags`;
+  tEl.classList.toggle('warn', igLimit && n > IG_MAX_HASHTAGS);
+  const tc = document.getElementById('titleCount'), len = document.getElementById('title').value.length;
+  tc.textContent = `${len}/100`; tc.classList.toggle('warn', len > 100);
+}
+document.getElementById('desc').addEventListener('input', syncCounts);
+document.getElementById('tags').addEventListener('input', syncCounts);
+document.getElementById('title').addEventListener('input', syncCounts);
+
+syncMode(); syncMfk(); syncCounts();
+(() => { const d = new Date(Date.now() + 60 * 60000); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5, 0, 0);
+  const p = n => String(n).padStart(2, '0');
+  whenEl.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; })();
+
+/* ---------- submit ---------- */
+document.getElementById('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const plats = checkedPlatforms();
+  const msg = document.getElementById('msg'); msg.classList.remove('err');
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const mfkEl = document.querySelector('input[name=mfk]:checked');
+  if (!plats.length) { msg.textContent = 'Pick at least one platform.'; msg.classList.add('err'); return; }
+  if (mode === 'schedule' && !whenEl.value) { msg.textContent = 'Pick a publish time, or choose Post now.'; msg.classList.add('err'); return; }
+  if (plats.includes('youtube') && !mfkEl) { msg.textContent = 'Answer whether this video is made for kids.'; msg.classList.add('err'); return; }
+  if (!document.getElementById('file').files[0]) { msg.textContent = 'Choose a video file.'; msg.classList.add('err'); return; }
+  const fd = new FormData();
+  fd.append('file', document.getElementById('file').files[0]);
+  if (document.getElementById('thumb').files[0]) fd.append('thumbnail', document.getElementById('thumb').files[0]);
+  fd.append('thumb_title', document.getElementById('thumbTitle').checked ? 'true' : 'false');
+  fd.append('title', document.getElementById('title').value);
+  fd.append('description', document.getElementById('desc').value);
+  fd.append('tags', document.getElementById('tags').value);
+  fd.append('platforms', plats.join(','));
+  fd.append('mode', mode);
+  if (mode === 'schedule') fd.append('when', whenEl.value);
+  if (mfkEl) fd.append('made_for_kids', mfkEl.value);
+  fd.append('story', document.getElementById('story').checked ? 'true' : 'false');
+  fd.append('dry', document.getElementById('dry').checked ? 'true' : 'false');
+  const btn = document.getElementById('go'); btn.disabled = true; msg.textContent = 'Uploading video to the server…';
+  try {
+    const r = await fetch('/api/schedule', { method: 'POST', body: fd });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || 'Something went wrong.');
+    msg.textContent = 'Queued — watch it on the right.';
+    refreshJobs();
+  } catch (err) { msg.textContent = err.message; msg.classList.add('err'); }
+  btn.disabled = false;
+});
+
+/* ---------- live browser view (read-only) ---------- */
+const canvas = document.getElementById('screen'), cctx = canvas.getContext('2d'), canvasWrap = document.getElementById('canvasWrap');
+const canvasOverlay = document.getElementById('canvasOverlay');
+let frameW = 1100, frameH = 700, ws, wsRetryMs = 2000;
+function connectWs() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.t === 'no-browser') {
+      canvasOverlay.textContent = "Browser isn't running — click Start browser above to connect.";
+      wsRetryMs = 8000;  // don't hammer reconnects while it's deliberately off
+      return;
+    }
+    if (m.t !== 'frame') return;
+    wsRetryMs = 2000;
+    canvasOverlay.textContent = 'No automation running. Submit the form to watch it work here.';
+    const img = new Image();
+    img.onload = () => {
+      frameW = m.w; frameH = m.h;
+      if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }
+      cctx.drawImage(img, 0, 0);
+      canvasWrap.classList.add('has-frame');
+    };
+    img.src = 'data:image/jpeg;base64,' + m.d;
+  };
+  ws.onclose = () => setTimeout(connectWs, wsRetryMs);
+  ws.onerror = () => {};
+}
+connectWs();
+
+/* ---------- jobs / activity polling ---------- */
+function fmtTs(t) { const d = new Date(t * 1000); const p = n => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+function elapsed(startedSec) { const s = Math.max(0, Math.floor(Date.now() / 1000 - startedSec)); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; }
+
+async function refreshJobs() {
+  let js;
+  try { js = await (await fetch('/api/jobs')).json(); } catch (e) { return; }
+  if (!js.length) return;
+  const job = js[0];
+
+  // status pill
+  const pill = document.getElementById('statusPill'), stxt = document.getElementById('statusText');
+  const running = job.current_platform && !job.finished;
+  pill.className = 'status-pill ' + (running ? 'running' : 'idle');
+  stxt.textContent = running ? `Running… ${elapsed(job.started)}` : (job.finished ? 'Idle' : 'Idle');
+
+  // per-platform tabs
+  document.querySelectorAll('.plat-tab').forEach(tab => {
+    const p = tab.dataset.p, step = job.steps[p];
+    tab.classList.toggle('active', p === job.current_platform);
+    const stEl = tab.querySelector('.st');
+    if (!step) { stEl.textContent = '—'; return; }
+    stEl.textContent = { queued: 'Waiting…', running: 'Posting…', done: 'Done', 'checked (dry run)': 'Checked', failed: 'Failed' }[step.state] || step.state;
+  });
+
+  // browser title
+  document.getElementById('browserTitle').textContent = job.current_platform
+    ? `Chrome — ${PLAT_NAME[job.current_platform]}` : (job.finished ? 'Chrome — idle' : 'Chrome — idle');
+
+  // steps + log for the active (or last) platform
+  const focusPlat = job.current_platform || job.platforms[job.platforms.length - 1];
+  const step = job.steps[focusPlat];
+  const stepsEl = document.getElementById('stepsList'), logEl = document.getElementById('logConsole');
+  if (step && step.log && step.log.length) {
+    stepsEl.innerHTML = step.log.map((entry, i) => {
+      const isLast = i === step.log.length - 1;
+      const failed = isLast && step.state === 'failed';
+      const cls = failed ? 'fail' : (isLast && step.state === 'running' ? 'now' : 'done');
+      const icon = failed ? '✕' : (cls === 'now' ? '' : '✓');
+      return `<li><span class="ic ${cls}">${icon}</span>${entry.msg.replace(/</g, '&lt;')}</li>`;
+    }).join('');
+    if (step.error) stepsEl.innerHTML += `<li><span class="ic fail">✕</span>${step.error.replace(/</g, '&lt;')}</li>`;
+    logEl.innerHTML = step.log.map((entry, i) => {
+      const isLast = i === step.log.length - 1;
+      return `<div class="line${isLast ? ' latest' : ''}"><span class="ts">[${fmtTs(entry.t)}]</span> ${entry.msg.replace(/</g, '&lt;')}</div>`;
+    }).join('');
+    if (step.error) logEl.innerHTML += `<div class="line err">[error] ${step.error.replace(/</g, '&lt;')}</div>`;
+    logEl.scrollTop = logEl.scrollHeight;
+  } else {
+    stepsEl.innerHTML = '<li class="empty-note">Nothing running yet.</li>';
+    logEl.innerHTML = '<div class="empty-note">Nothing logged yet.</div>';
+  }
+
+  // summary bar
+  const bar = document.getElementById('summaryBar');
+  bar.hidden = false;
+  document.getElementById('summaryTitle').textContent = job.title;
+  document.getElementById('summaryWhen').textContent = job.when === 'Now' ? 'Publishing now' : `Scheduled for ${job.when}`;
+  const thumbImg = document.getElementById('summaryThumb'), thumbPh = document.getElementById('summaryThumbPh');
+  if (job.thumbnail_url) { thumbImg.src = job.thumbnail_url; thumbImg.hidden = false; thumbPh.hidden = true; }
+  else { thumbImg.hidden = true; thumbPh.hidden = false; }
+  document.getElementById('summaryPlats').innerHTML = job.platforms.map(p => {
+    const st = job.steps[p].state;
+    const tick = st === 'failed' ? '<span class="tick fail">✕</span>' : (st === 'done' || st.startsWith('checked') ? '<span class="tick">✓</span>' : '');
+    return `<span class="badge" style="background:${PLAT_BADGE[p].bg}">${PLAT_BADGE[p].ic}${tick}</span>`;
+  }).join('');
+}
+setInterval(refreshJobs, 1500); refreshJobs();
+</script>
+</body>
+</html>
