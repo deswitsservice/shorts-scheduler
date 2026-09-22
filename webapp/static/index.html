@@ -253,6 +253,16 @@
             <label class="plat-chip on"><input type="checkbox" name="p" value="tiktok" checked><span class="badge" style="background:var(--tt)">♪</span>TikTok<span class="tick">✓</span></label>
           </div>
 
+          <details id="accountOptions">
+            <summary>Posting accounts</summary>
+            <p class="hint">Leave blank to use the current YouTube channel or a single available Meta account. If several Meta accounts are available, enter the exact display name. A YouTube channel ID prevents posting to a different signed-in channel.</p>
+            <label class="field-label" for="youtubeChannel">YouTube channel ID (optional)</label>
+            <input type="text" id="youtubeChannel" placeholder="UC…">
+            <label class="field-label" for="instagramAccount">Instagram account name (optional)</label>
+            <input type="text" id="instagramAccount" placeholder="Exact account name">
+            <label class="field-label" for="facebookAccount">Facebook Page name (optional)</label>
+            <input type="text" id="facebookAccount" placeholder="Exact Page name">
+          </details>
           <div id="mfkGroup">
             <label class="field-label" style="margin-top:16px">Made for kids? (YouTube) <span class="req">*</span></label>
             <div class="hint" style="margin-top:0">This helps YouTube apply the right restrictions. Required when posting to YouTube.</div>
@@ -333,7 +343,7 @@
   <div class="card summary-bar" id="summaryBar" hidden>
     <div class="thumb-ph" id="summaryThumbPh">🎬</div>
     <img class="thumb" id="summaryThumb" hidden>
-    <div class="info"><b id="summaryTitle">—</b><span id="summaryWhen">—</span></div>
+    <div class="info"><b id="summaryTitle">—</b><span id="summaryWhen">—</span><div id="summaryAccounts" class="hint"></div></div>
     <div class="plats" id="summaryPlats"></div>
   </div>
   </section>
@@ -359,10 +369,10 @@ async function refreshAccounts() {
       document.getElementById(dotId).classList.toggle('on', !!on);
       document.getElementById(textId).textContent = chromeIsRunning ? (on ? onText : offText) : 'browser off';
     };
-    set('d-youtube', 't-youtube', a.youtube, 'Connected', 'Not connected');
+    set('d-youtube', 't-youtube', a.youtube, 'Session detected', 'Not connected');
     set('d-meta1', 't-meta1', a.meta, 'Session detected', 'Not connected');
     set('d-meta2', 't-meta2', a.meta, 'Session detected', 'Not connected');
-    set('d-tiktok', 't-tiktok', a.tiktok, 'Connected', 'Not connected');
+    set('d-tiktok', 't-tiktok', a.tiktok, 'Session detected', 'Not connected');
   } catch (e) {}
 }
 setInterval(refreshAccounts, 6000); refreshAccounts();
@@ -536,6 +546,9 @@ document.getElementById('form').addEventListener('submit', async e => {
   fd.append('file', document.getElementById('file').files[0]);
   if (document.getElementById('thumb').files[0]) fd.append('thumbnail', document.getElementById('thumb').files[0]);
   fd.append('thumb_title', !document.getElementById('thumbTitle').disabled && document.getElementById('thumbTitle').checked ? 'true' : 'false');
+  fd.append('youtube_channel', document.getElementById('youtubeChannel').value);
+  fd.append('instagram_account', document.getElementById('instagramAccount').value);
+  fd.append('facebook_account', document.getElementById('facebookAccount').value);
   fd.append('title', document.getElementById('title').value);
   fd.append('description', document.getElementById('desc').value);
   fd.append('tags', document.getElementById('tags').value);
@@ -674,6 +687,7 @@ async function refreshJobs() {
   const bar = document.getElementById('summaryBar');
   bar.hidden = false;
   document.getElementById('summaryTitle').textContent = job.title;
+  document.getElementById('summaryAccounts').textContent = Object.entries(job.accounts || {}).map(([p, name]) => `${PLAT_NAME[p]}: ${name}`).join(' · ') || 'Account details appear as each posting page is checked.';
   document.getElementById('summaryWhen').textContent = (job.dry ? 'Preview only · ' : '') + (failed ? 'Failed · ' : job.finished ? 'Completed · ' : running ? 'In progress · ' : 'Queued · ') + (job.when === 'Now' ? 'Post now' : `Requested time: ${job.when}`);
   const thumbImg = document.getElementById('summaryThumb'), thumbPh = document.getElementById('summaryThumbPh');
   if (job.thumbnail_url) { thumbImg.src = job.thumbnail_url; thumbImg.hidden = false; thumbPh.hidden = true; }

@@ -8,7 +8,7 @@ STATIC = Path(__file__).resolve().parents[1] / 'webapp' / 'static'
 def job(jid, state, current=None, error=None):
     return dict(id=jid, title=jid, when='2026-11-27 10:00', dry=True,
                 platforms=['youtube'], started=1790030000, finished=1 if state=='failed' else None,
-                current_platform=current, thumbnail_url=None,
+                current_platform=current, thumbnail_url=None, accounts={'youtube':'UCverified'},
                 steps={'youtube': dict(state=state, log=[], error=error)})
 
 with sync_playwright() as p:
@@ -63,6 +63,7 @@ with sync_playwright() as p:
     page.evaluate('refreshJobs()')
     assert 'Browser unavailable' in page.locator('#logConsole').inner_text()
     assert page.locator('#statusText').inner_text()=='Failed'
+    assert page.locator('#summaryAccounts').inner_text() == 'YouTube: UCverified'
     assert 'Preview only' in page.locator('#summaryWhen').inner_text()
     assert page.locator('#summaryBar').evaluate('(e)=>e.parentElement.classList.contains("card")')
     page.screenshot(path='/tmp/love-shorts-desktop.png',full_page=True)
