@@ -108,6 +108,12 @@
   .accounts-row .acct .badge { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; }
   .accounts-row .acct .name { font-weight:600; font-size:12.5px; }
   .accounts-row .acct .st { color:var(--mute); font-size:11px; display:flex; align-items:center; gap:5px; }
+  .browser-off { margin-top:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:#fff6e6; border:1px solid #f3ddab; border-radius:12px; padding:10px 14px; }
+  .browser-off .ic { font-size:16px; flex:none; }
+  .browser-off .msg { color:#8a6a1f; font-size:12.5px; flex:1; min-width:200px; }
+  .browser-off button { flex:none; border:0; border-radius:9px; padding:8px 14px; font:inherit; font-size:12.5px; font-weight:700; color:#fff; cursor:pointer; background:linear-gradient(90deg, var(--accent1), var(--accent2)); }
+  .browser-off button:disabled { opacity:.6; cursor:default; }
+  @media (max-width:480px) { .browser-off { flex-direction:column; align-items:stretch; } .browser-off button { width:100%; } }
 
   /* ---- right column: Live Automation ---- */
   .live-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; }
@@ -197,9 +203,10 @@
         <div class="acct"><span class="badge" style="background:var(--fb)">f</span><span class="name">Facebook</span><span class="st"><span class="dot" id="d-meta2"></span><span id="t-meta2">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:var(--tt)">♪</span><span class="name">TikTok</span><span class="st"><span class="dot" id="d-tiktok"></span><span id="t-tiktok">checking…</span></span></div>
       </div>
-      <div id="browserOff" class="hint" style="margin-top:12px;display:none">
-        The app's browser isn't running, so nothing is connected and no posts can go out yet.
-        <button type="button" id="startBrowserBtn" style="margin-left:6px;background:var(--text);color:#fff;border:0;border-radius:8px;padding:6px 12px;font:inherit;font-size:12px;cursor:pointer">▶ Start browser</button>
+      <div id="browserOff" class="browser-off" style="display:none">
+        <span class="ic">⚠️</span>
+        <span class="msg">The app's browser isn't running, so nothing is connected and no posts can go out yet.</span>
+        <button type="button" id="startBrowserBtn">▶ Start browser</button>
       </div>
     </div>
 
@@ -343,7 +350,7 @@ async function refreshAccounts() {
   try {
     const a = await (await fetch('/api/accounts')).json();
     chromeIsRunning = !!a.chrome;
-    document.getElementById('browserOff').style.display = chromeIsRunning ? 'none' : 'block';
+    document.getElementById('browserOff').style.display = chromeIsRunning ? 'none' : 'flex';
     const set = (dotId, textId, on, onText, offText) => {
       document.getElementById(dotId).classList.toggle('on', !!on);
       document.getElementById(textId).textContent = chromeIsRunning ? (on ? onText : offText) : 'browser off';
