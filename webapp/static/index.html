@@ -300,6 +300,9 @@
       <div class="status-pill idle" id="statusPill"><span class="dot"></span><span id="statusText">Idle</span></div>
     </div>
 
+    <label class="field-label" for="jobSelect">Job details</label>
+    <select id="jobSelect" aria-describedby="jobHistoryHint"><option value="">Follow current job</option></select>
+    <div id="jobHistoryHint" class="hint">History for this server session. The browser view always follows the live posting tab.</div>
     <div class="plat-tabs" id="platTabs">
       <div class="plat-tab" data-p="youtube"><span class="badge" style="background:var(--yt)">▶</span><div class="nm">YouTube</div><div class="st">—</div></div>
       <div class="plat-tab" data-p="instagram"><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span><div class="nm">Instagram</div><div class="st">—</div></div>
@@ -598,11 +601,30 @@ connectWs();
 function fmtTs(t) { const d = new Date(t * 1000); const p = n => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
 function elapsed(startedSec) { const s = Math.max(0, Math.floor(Date.now() / 1000 - startedSec)); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; }
 
+const jobSelect = document.getElementById('jobSelect');
+jobSelect.addEventListener('change', refreshJobs);
 async function refreshJobs() {
   let js;
   try { js = await (await fetch('/api/jobs')).json(); } catch (e) { return; }
-  if (!js.length) return;
-  const job = js.find(j => j.current_platform && !j.finished) || js.find(j => !j.finished) || js[0];
+  const selected = jobSelect.value;
+  jobSelect.replaceChildren(new Option('Follow current job', ''));
+  for (const j of js) {
+    const state = j.finished ? (Object.values(j.steps).some(s => s.state === 'failed') ? 'Failed' : j.dry ? 'Preview complete' : 'Complete') : j.current_platform ? 'Running' : 'Queued';
+    jobSelect.add(new Option(`${j.title} — ${state} — ${j.when}`, j.id));
+  }
+  jobSelect.value = js.some(j => j.id === selected) ? selected : '';
+  if (!js.length) {
+    document.getElementById('summaryBar').hidden = true;
+    document.getElementById('statusText').textContent = 'Idle';
+    document.getElementById('statusPill').className = 'status-pill idle';
+    document.getElementById('stepsList').textContent = 'No jobs in this server session.';
+    document.getElementById('logConsole').textContent = 'No jobs in this server session.';
+    document.querySelectorAll('.plat-tab').forEach(tab => { tab.classList.remove('active'); tab.querySelector('.st').textContent = '—'; });
+    document.getElementById('browserTitle').textContent = 'Chrome — idle';
+    return;
+  }
+  const live = js.find(j => j.current_platform && !j.finished);
+  const job = js.find(j => j.id === jobSelect.value) || js.find(j => j.current_platform && !j.finished) || js.find(j => !j.finished) || js[0];
   const failed = Object.values(job.steps).some(s => s.state === 'failed');
 
   // status pill
@@ -621,8 +643,8 @@ async function refreshJobs() {
   });
 
   // browser title
-  document.getElementById('browserTitle').textContent = job.current_platform
-    ? `Chrome — ${PLAT_NAME[job.current_platform]}` : (job.finished ? 'Chrome — idle' : 'Chrome — idle');
+  document.getElementById('browserTitle').textContent = live
+    ? `Chrome — ${PLAT_NAME[live.current_platform]}` : (job.finished ? 'Chrome — idle' : 'Chrome — idle');
 
   // steps + log for the active (or last) platform
   const focusPlat = job.current_platform || job.platforms.find(p => job.steps[p].state === 'failed') || job.platforms[job.platforms.length - 1];
