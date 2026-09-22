@@ -30,6 +30,12 @@ with sync_playwright() as p:
     page.goto('http://test.local/')
     page.wait_for_function("document.querySelector('#summaryTitle').textContent === 'active job'")
     assert 'Running' in page.locator('#statusText').inner_text()
+    page.locator('#jobSelect').select_option('new queued job')
+    page.wait_for_function("document.querySelector('#summaryTitle').textContent === 'new queued job'")
+    assert page.locator('#statusText').inner_text() == 'Queued'
+    assert 'YouTube' in page.locator('#browserTitle').inner_text()
+    page.locator('#jobSelect').select_option('')
+    page.wait_for_function("document.querySelector('#summaryTitle').textContent === 'active job'")
     assert page.locator('#mfkGroup .choice-card.on').count()==1
     page.locator('#startBrowserBtn').click()
     page.wait_for_function("document.querySelector('#browserMessage').textContent.includes('Chrome did not become ready')")
@@ -63,6 +69,10 @@ with sync_playwright() as p:
     page.set_viewport_size({'width':390,'height':844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'Mobile overflow'
     page.screenshot(path='/tmp/love-shorts-mobile.png',full_page=True)
+    jobs.clear()
+    page.evaluate('refreshJobs()')
+    assert page.locator('#summaryBar').is_hidden()
+    assert page.locator('#statusText').inner_text() == 'Idle'
     assert not errors,errors
     browser.close()
 print('UI checks passed: active-job priority, early errors, preview labeling, initial selection, summary placement, mobile overflow; no JS errors.')

@@ -45,3 +45,5 @@ button[type=submit] { width:210px; margin-left:auto; border-radius:10px; padding
 
 label.field-label { display:flow-root; }
 .uploads { clear:both; width:100%; }
+
+#jobSelect { width:100%; min-width:0; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fcfdff; color:var(--text); font:inherit; }
