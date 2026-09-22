@@ -14,6 +14,7 @@ from playwright.async_api import async_playwright  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 UPLOADS = os.path.join(HERE, "uploads")
+THUMBS = os.path.join(bot.HERE, "shots", "thumbs")
 os.makedirs(UPLOADS, exist_ok=True)
 CDP = f"http://127.0.0.1:{bot.PORT}"
 app = FastAPI()
@@ -121,6 +122,10 @@ def run_job(job):
             step["state"], step["error"] = "failed", friendly_error(e)
     job["current_platform"] = None
     job["finished"] = time.time()
+    try:
+        bot.show_idle_screen()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @app.post("/api/schedule")
@@ -150,7 +155,9 @@ async def schedule(
         if text_ext not in IMAGE_EXTS:
             return JSONResponse({"error": f"Thumbnail '{text_ext or 'no extension'}' isn't a supported image type. Use .png or .jpg."}, status_code=400)
 
-    plats = [p for p in platforms.split(",") if p in ("youtube", "instagram", "facebook", "tiktok")]
+    if mode not in ("now", "schedule"):
+        return JSONResponse({"error": "Choose Post now or Schedule for later."}, status_code=400)
+    plats = list(dict.fromkeys(p.strip() for p in platforms.split(",") if p.strip() in PLATFORM_HOST))
     if not plats:
         return JSONResponse({"error": "Pick at least one platform."}, status_code=400)
     publish_now = mode == "now"
@@ -197,9 +204,15 @@ async def schedule(
     job = {"id": jid, "title": vid["title"], "when": "Now" if publish_now else vid["schedule"], "platforms": plats,
            "dry": dry == "true", "vid": vid, "steps": {p: {"state": "queued", "log": []} for p in plats},
            "created": time.time(), "started": None, "finished": None, "current_platform": None, "thumbnail_url": None}
-    await asyncio.get_running_loop().run_in_executor(None, bot.prepare_thumbnail, vid)
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, bot.prepare_thumbnail, vid)
+    except Exception:
+        for uploaded in (path, thumb_path):
+            if uploaded and os.path.exists(uploaded):
+                os.remove(uploaded)
+        return JSONResponse({"error": "Couldn't prepare the thumbnail. Choose a valid image and try again."}, status_code=400)
     if vid.get("thumbnail"):
-        tdir = os.path.join(HERE, "shots", "thumbs")
+        tdir = THUMBS
         job["thumbnail_url"] = f"/thumbs/{os.path.basename(vid['thumbnail'])}" if vid["thumbnail"].startswith(tdir) \
             else f"/uploads/{os.path.basename(vid['thumbnail'])}"
     jobs[jid] = job
@@ -221,7 +234,7 @@ def _accounts():
         return {"chrome": False, "youtube": False, "meta": False, "tiktok": False}
     res = {"chrome": True, "youtube": False, "meta": False, "tiktok": False}
     with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp(CDP)
+        b = p.chromium.connect_over_cdp(CDP, no_defaults=True)
         names = {(c["domain"].lstrip("."), c["name"]) for c in b.contexts[0].cookies()}
         has = lambda dom, name: any(d.endswith(dom) and n == name for d, n in names)  # noqa: E731
         res["youtube"] = has("youtube.com", "SAPISID") or has("google.com", "SAPISID")
@@ -241,8 +254,13 @@ async def accounts():
 @app.post("/api/start")
 async def start_browser():
     """Explicitly launches the app's Chrome (with saved logins already on disk). Never called automatically —
-    only in response to the user clicking Start Browser — so just opening/viewing the page can't pop a window."""
-    await asyncio.get_running_loop().run_in_executor(None, lambda: bot.start_chrome(list(bot.SITES)))
+    only in response to the user clicking Start Browser — so just opening/viewing the page can't pop a window.
+    Lands on a neutral YouTube tab rather than Chrome's own New Tab page (which shows the real profile's
+    personal shortcuts/history) — startup URLs passed on the command line aren't reliable across Chrome restarts."""
+    def _start():
+        bot.start_chrome()
+        bot.show_idle_screen()
+    await asyncio.get_running_loop().run_in_executor(None, _start)
     return {"ok": True}
 
 
@@ -260,7 +278,7 @@ async def browser_ws(ws: WebSocket):
         return
     async with async_playwright() as p:
         try:
-            browser = await p.chromium.connect_over_cdp(CDP)
+            browser = await p.chromium.connect_over_cdp(CDP, no_defaults=True)
         except Exception:  # noqa: BLE001
             await ws.close()
             return
@@ -327,10 +345,10 @@ def index():
     return FileResponse(os.path.join(HERE, "static", "index.html"))
 
 
-os.makedirs(os.path.join(HERE, "shots", "thumbs"), exist_ok=True)
+os.makedirs(THUMBS, exist_ok=True)
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
-app.mount("/thumbs", StaticFiles(directory=os.path.join(HERE, "shots", "thumbs")), name="thumbs")
+app.mount("/thumbs", StaticFiles(directory=THUMBS), name="thumbs")
 
 if __name__ == "__main__":
     import uvicorn
