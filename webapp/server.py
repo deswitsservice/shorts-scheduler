@@ -144,6 +144,9 @@ async def schedule(
     dry: str = Form("false"),
     story: str = Form("false"),
     thumb_title: str = Form("true"),
+    youtube_channel: str = Form(""),
+    instagram_account: str = Form(""),
+    facebook_account: str = Form(""),
 ):
     jid = uuid.uuid4().hex[:8]
 
@@ -202,9 +205,10 @@ async def schedule(
     vid = {"id": jid, "file": path, "title": title.strip(), "description": desc,
            "schedule": None if publish_now else when.replace("T", " ")[:16], "publish_now": publish_now,
            "made_for_kids": made_for_kids == "true", "story": story == "true", "thumbnail": thumb_path,
-           "thumb_title": thumb_title == "true"}
+           "thumb_title": thumb_title == "true", "youtube_channel": youtube_channel.strip(),
+           "instagram_account": instagram_account.strip(), "facebook_account": facebook_account.strip(), "accounts": {}}
     job = {"id": jid, "title": vid["title"], "when": "Now" if publish_now else vid["schedule"], "platforms": plats,
-           "dry": dry == "true", "vid": vid, "steps": {p: {"state": "queued", "log": []} for p in plats},
+           "dry": dry == "true", "vid": vid, "accounts": vid["accounts"], "steps": {p: {"state": "queued", "log": []} for p in plats},
            "created": time.time(), "started": None, "finished": None, "current_platform": None, "thumbnail_url": None}
     try:
         await asyncio.get_running_loop().run_in_executor(None, bot.prepare_thumbnail, vid)
@@ -225,7 +229,7 @@ async def schedule(
 @app.get("/api/jobs")
 def list_jobs():
     out = []
-    keys = ("id", "title", "when", "platforms", "dry", "steps", "started", "finished", "current_platform", "thumbnail_url")
+    keys = ("id", "title", "when", "platforms", "dry", "steps", "started", "finished", "current_platform", "thumbnail_url", "accounts")
     for j in sorted(jobs.values(), key=lambda x: -x["created"]):
         out.append({k: j[k] for k in keys})
     return out

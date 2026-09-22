@@ -192,6 +192,11 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
         track_automation_page(pg)
         if not resume:
             channel = resolve_channel(pg)
+            expected = vid.get("youtube_channel", "").strip()
+            if expected and expected != channel:
+                sys.exit(f"youtube: signed-in channel is {channel}, not requested {expected}. Switch channels in Chrome before retrying.")
+            vid.setdefault("accounts", {})["youtube"] = channel
+            on_step(f"YouTube channel: {channel}")
             pg.goto(f"https://studio.youtube.com/channel/{channel}/videos/upload?d=ud")
             on_step("Uploading video file")
             pg.locator("input[type=file]").first.set_input_files(vid["file"], timeout=180000)
@@ -252,7 +257,7 @@ def _row_state(handle):
     return alt, handle.get_attribute("aria-selected") == "true"
 
 
-def select_meta_account(pg, target):
+def select_meta_account(pg, target, expected_name=None):
     """Selects exactly one account of the requested platform (instagram or facebook) in the composer's
     account picker, identified by each row's platform icon (img alt="Instagram"/"Facebook") rather than a
     hardcoded display name -- works for any signed-in account, not just one specific one. Returns the
@@ -268,7 +273,7 @@ def select_meta_account(pg, target):
     An element handle sidesteps both: it's a direct reference to one specific DOM node, unaffected by
     reordering or by other rows sharing its name.
 
-    Selects exactly one row of the target platform (the first match) and deselects every other row,
+    Requires a unique target platform/name match and deselects every other row,
     including other rows of the *same* platform: with more than one connected account of a platform, an
     earlier version selected all of them instead of just one (confirmed during review)."""
     want_alt = "Instagram" if target == "instagram" else "Facebook"
@@ -284,6 +289,12 @@ def select_meta_account(pg, target):
     target_indices = [i for i, (alt, _) in enumerate(states) if alt == want_alt]
     if not target_indices:
         sys.exit(f"meta: no {want_alt} account found among the {len(handles)} available accounts")
+    if expected_name:
+        target_indices = [i for i in target_indices if handles[i].inner_text().strip() == expected_name.strip()]
+        if not target_indices:
+            sys.exit(f"meta: no {want_alt} account exactly matching {expected_name!r}; check the account name.")
+    if len(target_indices) != 1:
+        sys.exit(f"meta: multiple {want_alt} accounts match. Specify one unique account name in the posting form.")
     keep = target_indices[0]
     target_name = handles[keep].inner_text().strip()
     if len(target_indices) > 1:
@@ -326,7 +337,9 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
         pg.wait_for_selector("text=Reel details", timeout=60000)
         pg.wait_for_timeout(2000)
         on_step(f"Selecting {target} account")
-        want_name = select_meta_account(pg, target)  # verifies the correct account itself; nothing further to check here
+        want_name = select_meta_account(pg, target, vid.get(f"{target}_account"))
+        vid.setdefault("accounts", {})[target] = want_name
+        on_step(f"{target.title()} account: {want_name}")
         on_step("Uploading video file")
         with pg.expect_file_chooser(timeout=30000) as fc:
             pg.get_by_role("button", name="Add Video").click()

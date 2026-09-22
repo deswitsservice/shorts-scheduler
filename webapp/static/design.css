@@ -47,3 +47,6 @@ label.field-label { display:flow-root; }
 .uploads { clear:both; width:100%; }
 
 #jobSelect { width:100%; min-width:0; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fcfdff; color:var(--text); font:inherit; }
+
+#accountOptions { margin-top:12px; padding:10px; border:1px solid var(--line); border-radius:10px; }
+#accountOptions summary { cursor:pointer; font-weight:600; }

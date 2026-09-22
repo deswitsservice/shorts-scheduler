@@ -42,11 +42,16 @@ class ScheduleTests(unittest.TestCase):
             'thumbnail': ('cover.png', image.getvalue(), 'image/png')})
 
     def test_generated_thumbnail_served_and_platform_deduplicated(self):
-        response = self.request()
+        response = self.request(youtube_channel="UCtest", instagram_account="Creator", facebook_account="Page")
         self.assertEqual(response.status_code, 200)
         job = server.jobs[response.json()['id']]
         self.addCleanup(lambda: Path(job['vid']['thumbnail']).unlink(missing_ok=True))
         self.assertEqual(job['platforms'], ['youtube'])
+        self.assertEqual(job['vid']['youtube_channel'], 'UCtest')
+        self.assertEqual(job['vid']['instagram_account'], 'Creator')
+        self.assertEqual(job['vid']['facebook_account'], 'Page')
+        job['vid']['accounts']['youtube'] = 'UCtest'
+        self.assertEqual(self.client.get('/api/jobs').json()[0]['accounts'], {'youtube': 'UCtest'})
         self.assertTrue(job['thumbnail_url'].startswith('/thumbs/'))
         image = self.client.get(job['thumbnail_url'])
         self.assertEqual(image.status_code, 200)
