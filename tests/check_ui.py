@@ -34,6 +34,15 @@ with sync_playwright() as p:
     page.locator('#startBrowserBtn').click()
     page.wait_for_function("document.querySelector('#browserMessage').textContent.includes('Chrome did not become ready')")
     assert page.locator('#startBrowserBtn').is_enabled()
+    page.locator('#desc').fill(' '.join('#tag'+str(i) for i in range(31)))
+    assert page.locator('#tagCount').inner_text() == '31 / 30 hashtags'
+    assert page.locator('#tags').evaluate('(el)=>!el.validity.valid')
+    page.locator('#desc').fill('')
+    page.locator('#when').fill('2099-01-01T12:00')
+    assert page.locator('#when').evaluate('(el)=>!el.validity.valid')
+    page.locator('input[name=mode][value=now]').check()
+    assert page.locator('#when').is_disabled()
+    assert page.locator('#when').evaluate('(el)=>el.validationMessage') == ''
     jobs[:]=[job('failed job','failed',error='Browser unavailable')]
     page.evaluate('refreshJobs()')
     assert 'Browser unavailable' in page.locator('#logConsole').inner_text()
