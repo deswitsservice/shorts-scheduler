@@ -474,7 +474,10 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
             sys.exit("AI-generated content label did not turn on")
         on_step("Running TikTok's content checks")
         pg.wait_for_function("!document.body.innerText.includes('Checks can only start after the file is uploaded')", timeout=300000)
-        btn = pg.get_by_role("button", name="Schedule", exact=True).last
+        # The button is labeled "Post" for publish_now, "Schedule" otherwise -- this was hardcoded to
+        # "Schedule" regardless of `now`, so a publish_now run waited on a button that doesn't exist
+        # here and timed out (reproduced live) even though the final click below already handles both.
+        btn = pg.get_by_role("button", name=("Post" if now else "Schedule"), exact=True).last
         for _ in range(120):
             if btn.is_enabled():
                 break
