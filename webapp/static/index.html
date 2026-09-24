@@ -221,7 +221,7 @@
       <div id="browserMessage" class="hint" role="status" aria-live="polite"></div>
       <div id="browserOff" class="browser-off" style="display:none">
         <span class="ic">⚠️</span>
-        <span class="msg">Start the background posting browser to connect your accounts. Posting progress will appear here in Live Automation.</span>
+        <span class="msg">Connect a platform above to sign in. This button starts the posting browser in the background using your saved sessions.</span>
         <button type="button" id="startBrowserBtn">▶ Start posting browser</button>
       </div>
     </div>
@@ -484,11 +484,14 @@ document.getElementById('startBrowserBtn').addEventListener('click', async (e) =
   const btn = e.currentTarget;
   if (!await requireSignIn()) return;
   btn.disabled = true; btn.textContent = 'Starting…';
+  document.getElementById('browserMessage').textContent = 'Starting your background browser… This can take up to 30 seconds.';
   try {
     const response = await fetch('/api/start', { method: 'POST' });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || 'Unable to start the posting browser.');
-    document.getElementById('browserMessage').textContent = 'Posting browser ready. Progress will appear in Live Automation.';
+    document.getElementById('browserMessage').textContent = document.getElementById('manualSignIn').hidden
+      ? 'Posting browser ready in the background. Use Connect above to sign in. Progress appears here when posting starts.'
+      : 'Posting browser ready in the background. For YouTube login, click Sign in to YouTube in Chrome above.';
     await refreshAccounts(); connectWs();
   } catch (err) {
     document.getElementById('browserMessage').textContent = err.message || 'Cannot reach the server. Try again.';
