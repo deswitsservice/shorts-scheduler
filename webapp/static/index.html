@@ -175,6 +175,7 @@
 <link rel="stylesheet" href="/static/design.css">
 </head>
 <body>
+<div role="status" style="padding:12px 24px;background:#fff4cf;color:#624900">Hosted account preview: your workspace is private. Platform connections and publishing are not available until hosted browser workers are configured.</div>
 <header>
   <div class="brand">
     <div class="logo">❤️</div>
@@ -186,7 +187,7 @@
   <div class="right">
     <div class="pill-btn">✨ Good content, brighter days</div>
 
-    <a class="pill-btn" href="#accounts">Account status ↓</a>
+    <span id="signedInEmail"></span><button class="pill-btn" id="signOut" type="button">Sign out</button>
   </div>
 </header>
 
@@ -350,6 +351,23 @@
 </main>
 
 <script>
+// All mutations carry a same-origin request marker; expired sessions return to sign-in.
+const originalFetch = window.fetch.bind(window);
+window.fetch = async (url, options = {}) => {
+  const headers = new Headers(options.headers || {});
+  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) headers.set('X-Shorts-Request', '1');
+  const response = await originalFetch(url, {...options, headers});
+  if (response.status === 401) location.replace('/login');
+  return response;
+};
+fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(user => {
+  if (user) document.getElementById('signedInEmail').textContent = user.email;
+}).catch(() => {});
+document.getElementById('signOut').onclick = async () => {
+  const response = await fetch('/api/auth/logout', {method: 'POST'});
+  if (response.ok) location.replace('/login');
+};
+
 const PLAT_BADGE = {
   youtube: { bg: 'var(--yt)', ic: '▶' },
   instagram: { bg: 'linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))', ic: '◎' },
@@ -360,9 +378,19 @@ const PLAT_NAME = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Faceb
 
 /* ---------- accounts ---------- */
 let chromeIsRunning = false;
+let hostedPending = false;
 async function refreshAccounts() {
   try {
     const a = await (await fetch('/api/accounts')).json();
+    hostedPending = !!a.hosted_pending;
+    if (hostedPending) {
+      document.getElementById('go').disabled = true;
+      document.getElementById('browserOff').style.display = 'none';
+      document.getElementById('browserMessage').textContent = 'Platform connections are not configured for this hosted preview.';
+      document.getElementById('canvasOverlay').textContent = 'Live Automation will be available when hosted platform connections are configured.';
+      for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
+      return;
+    }
     chromeIsRunning = !!a.chrome;
     document.getElementById('browserOff').style.display = chromeIsRunning ? 'none' : 'flex';
     const set = (dotId, textId, on, onText, offText) => {
@@ -574,6 +602,7 @@ const canvas = document.getElementById('screen'), cctx = canvas.getContext('2d')
 const canvasOverlay = document.getElementById('canvasOverlay');
 let frameW = 1100, frameH = 700, ws, wsRetryMs = 2000, wsTimer;
 function connectWs() {
+  if (hostedPending) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   clearTimeout(wsTimer);
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
@@ -602,6 +631,7 @@ function connectWs() {
     img.src = 'data:image/jpeg;base64,' + m.d;
   };
   ws.onclose = () => {
+    if (hostedPending) return;
     canvasWrap.classList.remove('has-frame');
     canvasOverlay.textContent = 'Browser view disconnected. Reconnecting…';
     wsTimer = setTimeout(connectWs, wsRetryMs);
