@@ -124,7 +124,7 @@ async def serve_view(ws: WebSocket, workspace, authorized, platform=None):
                     return next((page for page in reversed(pages) if not page.is_closed()), None)
 
                 async def screenshots():
-                    while authorized():
+                    while authorized() and not workspace.worker.manual_mode:
                         page = current_page() if interactive else None
                         if not interactive and not workspace.gate.locked():
                             page = await workspace.engine.find_automation_page(ctx, workspace.engine.bot.ACTIVE_TARGET_ID)
@@ -147,7 +147,7 @@ async def serve_view(ws: WebSocket, workspace, authorized, platform=None):
 
                 async def receive_input():
                     window, count = asyncio.get_running_loop().time(), 0
-                    while authorized():
+                    while authorized() and not workspace.worker.manual_mode:
                         raw = await ws.receive_text()
                         if not authorized():
                             return
@@ -169,7 +169,7 @@ async def serve_view(ws: WebSocket, workspace, authorized, platform=None):
 
                 async def check_session():
                     deadline = asyncio.get_running_loop().time() + 900
-                    while authorized() and (not interactive or asyncio.get_running_loop().time() < deadline):
+                    while authorized() and not workspace.worker.manual_mode and (not interactive or asyncio.get_running_loop().time() < deadline):
                         await asyncio.sleep(.5)
 
                 running = [asyncio.create_task(screenshots()), asyncio.create_task(receive_input()),

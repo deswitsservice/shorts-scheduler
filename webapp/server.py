@@ -4,6 +4,7 @@ from contextlib import contextmanager, asynccontextmanager
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import importlib.util
 import json
 import os
@@ -142,6 +143,15 @@ class TenantRouter:
                 self.workspaces[uid] = Workspace(self.store.root, uid, self.capacity)
             return self.workspaces[uid]
 
+    def local_manual_allowed(self, conn):
+        if not self.enabled or sys.platform != 'darwin' or os.environ.get('SHORTS_LOCAL_MANUAL_LOGIN') != '1':
+            return False
+        try:
+            return (ipaddress.ip_address(conn.client.host).is_loopback
+                    and conn.url.hostname in ('localhost', '127.0.0.1', '::1'))
+        except (ValueError, AttributeError):
+            return False
+
     async def __call__(self, scope, receive, send):
         from starlette.requests import HTTPConnection
         conn = HTTPConnection(scope)
@@ -156,6 +166,9 @@ class TenantRouter:
                 return
             token = conn.cookies.get(COOKIE)
             workspace = self.workspace(user['id'])
+            if workspace.worker.manual_mode:
+                await send({'type': 'websocket.close', 'code': 1008})
+                return
             await serve_view(WebSocket(scope, receive, send), workspace,
                              lambda: self.store.user(token) is not None, platform)
             return
@@ -174,8 +187,46 @@ class TenantRouter:
                                 'hosted_pending': True})(scope, receive, send)
             return
         workspace = self.workspace(user['id'])
-        if scope['path'] in ('/api/start', '/api/schedule'):
-            if workspace.gate.locked():
+        path = scope['path']
+        if path in ('/api/manual-login/start', '/api/manual-login/finish'):
+            if scope['method'] != 'POST':
+                await JSONResponse({'error': 'Use POST.'}, status_code=405)(scope, receive, send)
+                return
+            if not self.local_manual_allowed(conn):
+                await JSONResponse({'error': 'Direct sign-in is only available on the local Mac.'}, status_code=403)(scope, receive, send)
+                return
+            if workspace.gate.locked() or workspace.busy():
+                await JSONResponse({'error': 'Close the in-app sign-in view and finish posting before direct sign-in.'}, status_code=409)(scope, receive, send)
+                return
+            async with workspace.gate:
+                try:
+                    if path.endswith('/start'):
+                        # A fixed platform URL only; callers cannot navigate Chrome to arbitrary files/hosts.
+                        platform = conn.query_params.get('platform', 'youtube')
+                        if platform not in SITES:
+                            await JSONResponse({'error': 'Unknown platform.'}, status_code=400)(scope, receive, send)
+                            return
+                        await asyncio.to_thread(workspace.worker.start_manual, SITES[platform])
+                    else:
+                        await asyncio.to_thread(workspace.worker.finish_manual)
+                    await JSONResponse({'ok': True})(scope, receive, send)
+                except RuntimeError as exc:
+                    await JSONResponse({'error': str(exc)}, status_code=409)(scope, receive, send)
+            return
+        if path == '/api/accounts' and self.enabled:
+            if workspace.worker.manual_mode:
+                result = {'chrome': False, 'youtube': False, 'meta': False, 'tiktok': False,
+                          'manual_active': True}
+            else:
+                try:
+                    result = await asyncio.to_thread(workspace.engine._accounts)
+                except Exception:
+                    result = {'chrome': False, 'youtube': False, 'meta': False, 'tiktok': False}
+            result['manual_available'] = self.local_manual_allowed(conn)
+            await JSONResponse(result)(scope, receive, send)
+            return
+        if path in ('/api/start', '/api/schedule'):
+            if workspace.gate.locked() or workspace.worker.manual_mode:
                 await JSONResponse({'error': 'Finish connecting your account before posting.'}, status_code=409)(scope, receive, send)
                 return
             async with workspace.gate:

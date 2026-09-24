@@ -212,6 +212,12 @@
         <button type="button" class="pill-btn" data-connect="facebook">Connect Facebook</button>
         <button type="button" class="pill-btn" data-connect="tiktok">Connect TikTok</button>
       </div>
+      <div id="manualSignIn" hidden style="margin-top:12px;padding:12px;background:#f4f7ff;border-radius:10px">
+        <p class="hint">Google blocking in-app sign-in? Try signing in directly in Chrome on this Mac. This opens a separate window in front.</p>
+        <button type="button" class="pill-btn" id="manualStart">Sign in to YouTube in Chrome</button>
+        <button type="button" class="pill-btn" id="manualFinish" hidden>Continue after quitting Chrome</button>
+        <p id="manualStatus" role="status" aria-live="polite"></p>
+      </div>
       <div id="browserMessage" class="hint" role="status" aria-live="polite"></div>
       <div id="browserOff" class="browser-off" style="display:none">
         <span class="ic">⚠️</span>
@@ -428,12 +434,29 @@ const PLAT_NAME = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Faceb
 /* ---------- accounts ---------- */
 let chromeIsRunning = false;
 let hostedPending = false;
+let manualSignInActive = false;
 async function refreshAccounts() {
   await authReady;
   if (!currentUser) return;
   try {
     const a = await (await fetch('/api/accounts')).json();
     hostedPending = !!a.hosted_pending;
+    const wasManual = manualSignInActive;
+    manualSignInActive = !!a.manual_active;
+    document.getElementById('manualSignIn').hidden = !a.manual_available;
+    document.getElementById('manualStart').hidden = manualSignInActive;
+    document.getElementById('manualFinish').hidden = !manualSignInActive;
+    for (const button of document.querySelectorAll('[data-connect]')) button.disabled = manualSignInActive;
+    if (manualSignInActive) {
+      document.getElementById('go').disabled = true;
+      document.getElementById('browserOff').style.display = 'none';
+      document.getElementById('manualStatus').textContent = 'Sign in directly in Chrome. When finished, quit that Chrome instance with Command-Q, then click Continue. Posting and live viewing are paused.';
+      document.getElementById('canvasOverlay').textContent = 'Direct sign-in is open. Live Automation resumes after you finish.';
+      document.getElementById('canvasWrap').classList.remove('has-frame');
+      for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Sign-in in progress';
+      return;
+    }
+    if (wasManual) document.getElementById('go').disabled = false;
     document.getElementById('platformConnections').hidden = hostedPending;
     if (hostedPending) {
       document.getElementById('go').disabled = true;
@@ -458,8 +481,8 @@ async function refreshAccounts() {
 setInterval(refreshAccounts, 6000); refreshAccounts();
 
 document.getElementById('startBrowserBtn').addEventListener('click', async (e) => {
-  if (!await requireSignIn()) return;
   const btn = e.currentTarget;
+  if (!await requireSignIn()) return;
   btn.disabled = true; btn.textContent = 'Starting…';
   try {
     const response = await fetch('/api/start', { method: 'POST' });
@@ -624,6 +647,7 @@ syncMode(); syncMfk(); syncCounts(); syncOptions();
 
 /* ---------- submit ---------- */
 document.getElementById('form').addEventListener('submit', async e => {
+  const form = e.currentTarget;
   e.preventDefault();
   if (!await requireSignIn()) return;
   const plats = checkedPlatforms();
@@ -635,7 +659,7 @@ document.getElementById('form').addEventListener('submit', async e => {
   if (plats.includes('youtube') && !mfkEl) { msg.textContent = 'Answer whether this video is made for kids.'; msg.classList.add('err'); return; }
   if (!document.getElementById('file').files[0]) { msg.textContent = 'Choose a video file.'; msg.classList.add('err'); return; }
   syncCounts();
-  if (!e.currentTarget.reportValidity()) return;
+  if (!form.reportValidity()) return;
   const fd = new FormData();
   fd.append('file', document.getElementById('file').files[0]);
   if (document.getElementById('thumb').files[0]) fd.append('thumbnail', document.getElementById('thumb').files[0]);
@@ -670,7 +694,7 @@ let frameW = 1100, frameH = 700, ws, wsRetryMs = 2000, wsTimer;
 async function connectWs() {
   await authReady;
   if (!currentUser) return;
-  if (hostedPending) return;
+  if (hostedPending || manualSignInActive) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   clearTimeout(wsTimer);
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
@@ -699,7 +723,7 @@ async function connectWs() {
     img.src = 'data:image/jpeg;base64,' + m.d;
   };
   ws.onclose = () => {
-    if (hostedPending) return;
+    if (hostedPending || manualSignInActive) return;
     canvasWrap.classList.remove('has-frame');
     canvasOverlay.textContent = 'Browser view disconnected. Reconnecting…';
     wsTimer = setTimeout(connectWs, wsRetryMs);

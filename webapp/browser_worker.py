@@ -22,19 +22,36 @@ class BrowserWorker:
         self.endpoint = None
         self.port = None
         self.slot = False
+        self.manual_mode = False
         self.last_used = time.monotonic()
 
     def running(self):
         process = self.process
-        return self.endpoint is not None and process is not None and process.poll() is None
+        return not self.manual_mode and self.endpoint is not None and process is not None and process.poll() is None
 
     def touch(self):
         self.last_used = time.monotonic()
 
-    def start(self, *args, **kwargs):
+    def start_manual(self, url):
+        if sys.platform != 'darwin':
+            raise RuntimeError('Direct sign-in is available only on the local Mac. Hosted sign-in needs a private remote desktop.')
+        self.start(_manual_url=url)
+
+    def finish_manual(self):
+        with self.lock:
+            if not self.manual_mode:
+                raise RuntimeError('No direct sign-in is open.')
+            if self.process and self.process.poll() is None:
+                raise RuntimeError('Quit the sign-in Chrome instance with Command-Q, then click Continue.')
+            self.stop()
+            self.start()
+
+    def start(self, *args, _manual_url=None, **kwargs):
         with self.lock:
             self.touch()
-            if self.running():
+            if self.manual_mode:
+                raise RuntimeError('Finish direct sign-in before starting automation.')
+            if self.running() and _manual_url is None:
                 return
             self.stop()
             if not self.capacity.acquire(blocking=False):
@@ -87,11 +104,21 @@ class BrowserWorker:
                          '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
                          '--disable-session-crashed-bubble', '--window-size=1200,850',
                          '--window-position=-2400,-2400', 'about:blank']
+                if _manual_url is not None:
+                    flags = [f'--user-data-dir={self.profile}', '--no-first-run', '--no-default-browser-check',
+                             '--new-window', '--window-size=1200,850', '--window-position=60,60', _manual_url]
+                    self.manual_mode = True
                 command = [chrome, *flags]
-                if sys.platform == 'darwin':
+                if sys.platform == 'darwin' and _manual_url is None:
                     # -W keeps a process handle for the lifetime of this separate app instance.
                     command = ['open', '-n', '-g', '-j', '-W', '-a', str(Path(chrome).parents[2]), '--args', *flags]
                 self.process = subprocess.Popen(command, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if _manual_url is not None:
+                    # Do not discover/attach a debugging endpoint during direct human sign-in.
+                    time.sleep(.5)
+                    if self.process.poll() is not None:
+                        raise RuntimeError('The sign-in browser closed before becoming ready.')
+                    return
                 deadline = time.monotonic() + 25
                 while time.monotonic() < deadline:
                     if self.process.poll() is not None:
@@ -139,6 +166,7 @@ class BrowserWorker:
                         process.wait(timeout=5)
             self.process = self.display = None
             self.endpoint = self.port = None
+            self.manual_mode = False
             if self.profile_lock:
                 self.profile_lock.close()
                 self.profile_lock = None

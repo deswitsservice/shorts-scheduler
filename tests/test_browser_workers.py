@@ -50,7 +50,7 @@ class ViewTests(unittest.TestCase):
         response = self.client.post('/api/auth/register', headers=self.headers,
                                     json={'email': 'a@example.com', 'password': 'a long test password'})
         self.workspace = self.app.state.tenants.workspace(response.json()['id'])
-        self.workspace.worker = Mock(endpoint='http://private-worker')
+        self.workspace.worker = Mock(endpoint='http://private-worker', manual_mode=False)
         self.workspace.worker.running.return_value = True
         self.page = Mock(viewport_size={'width': 1200, 'height': 780})
         self.page.is_closed.return_value = False
@@ -112,7 +112,7 @@ class ViewTests(unittest.TestCase):
         response = other.post('/api/auth/register', headers=self.headers,
                               json={'email': 'b@example.com', 'password': 'a long test password'})
         workspace = self.app.state.tenants.workspace(response.json()['id'])
-        workspace.worker = Mock(endpoint='http://other-private-worker')
+        workspace.worker = Mock(endpoint='http://other-private-worker', manual_mode=False)
         workspace.worker.running.return_value = True
         workspace.engine.find_automation_page = AsyncMock(return_value=self.page)
         with other.websocket_connect('/ws', headers={'Origin': 'http://testserver'}) as ws:

@@ -51,3 +51,13 @@ Remaining work: durable job history/queue and restart recovery, tenant time zone
 No test signs into real platforms or publishes content. macOS worker lifecycle has been exercised locally; Linux/Xvfb deployment still needs a host smoke test.
 
 Implementation references: [Playwright CDP attachment](https://playwright.dev/python/docs/api/class-browsertype#browser-type-connect-over-cdp) and [Chrome's dedicated profile requirement for remote debugging](https://developer.chrome.com/blog/remote-debugging-port).
+
+## Local direct sign-in validation (macOS)
+
+If Google rejects the streamed sign-in view, enable `SHORTS_LOCAL_MANUAL_LOGIN=1` **only for local development on the Mac**. After signing into the app, choose **Sign in to YouTube in Chrome** in Account Status. Close any in-app sign-in dialog first and wait for queued posts to finish.
+
+The app closes the automated browser and opens the same private profile in a visible, ordinary Chrome process **without remote-debugging flags or a Playwright connection**. Complete sign-in directly in that window. Quit that Chrome instance with Command-Q, then select **Continue after quitting Chrome** in the app. The app refuses to resume while the manual browser is still running. Resuming reopens the same saved profile for browser automation; it does not automatically upload anything.
+
+During direct sign-in, account cookie inspection, both browser WebSockets, and posting are blocked. A page reload still shows the pending sign-in state. App shutdown closes this test browser; normal profile persistence is retained. The endpoint requires authentication, same-origin mutation headers, explicit configuration, a loopback client, and a localhost Host. Do not enable it behind a hosted reverse proxy or on a shared server.
+
+`python3 tests/check_manual_signin.py` verifies the no-CDP process, rejects early resume, and checks that a cookie set by a local fixture survives into the resumed automation profile. It does **not** test Google account acceptance. A user must complete that validation manually; there is no guarantee this resolves Google's block. Hosted users still need an isolated remote-desktop sign-in transport; this local option is the validation step before building it.

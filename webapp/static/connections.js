@@ -113,3 +113,25 @@
     button.onclick = () => { send({type: 'key', key: button.dataset.remoteKey}); canvas.focus({preventScroll: true}); };
   });
 })();
+
+// Direct local sign-in deliberately has no streamed page or remote input.
+for (const [id, action] of [['manualStart', 'start?platform=youtube'], ['manualFinish', 'finish']]) {
+  document.getElementById(id).onclick = async event => {
+    const button = event.currentTarget;
+    if (!await requireSignIn()) return;
+    button.disabled = true;
+    const message = document.getElementById('manualStatus');
+    message.textContent = id === 'manualStart' ? 'Opening Chrome for direct sign-in…' : 'Reopening your saved profile for posting…';
+    try {
+      const response = await fetch('/api/manual-login/' + action, {method: 'POST'});
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || 'Could not change sign-in mode.');
+      await refreshAccounts();
+      if (id === 'manualFinish') {
+        message.textContent = 'Profile reopened. Check the account status above; saved sessions may still require verification.';
+        connectWs();
+      }
+    } catch (error) { message.textContent = error.message; }
+    finally { button.disabled = false; }
+  };
+}
