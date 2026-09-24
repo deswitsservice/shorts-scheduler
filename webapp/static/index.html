@@ -162,6 +162,7 @@
   .empty-note { color:var(--mute); font-size:12.5px; }
 
   .summary-bar { margin-top:16px; grid-column:1/-1; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  [hidden] { display:none !important; }
   #platformConnections[hidden] { display:none !important; }
   .summary-bar[hidden] { display:none; }
   .summary-bar img.thumb { width:52px; height:80px; object-fit:cover; border-radius:8px; background:#eee; flex:none; }
@@ -188,7 +189,7 @@
   <div class="right">
     <div class="pill-btn">✨ Good content, brighter days</div>
 
-    <span id="signedInEmail"></span><button class="pill-btn" id="signOut" type="button">Sign out</button>
+    <span id="signedInEmail"></span><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signOut" type="button" hidden>Sign out</button>
   </div>
 </header>
 
@@ -357,6 +358,12 @@
   </section>
 </main>
 
+<dialog id="authPrompt" aria-labelledby="authPromptTitle" style="width:min(420px,90vw);padding:24px;border:1px solid #cad3e5;border-radius:16px">
+  <h2 id="authPromptTitle">Sign in to upload your video</h2>
+  <p>Create an account or sign in to save your videos, connect your platforms, and start posting.</p>
+  <a class="pill-btn" href="/login?intent=upload">Sign in or create account</a>
+  <button class="pill-btn" type="button" onclick="document.getElementById('authPrompt').close()">Keep browsing</button>
+</dialog>
 <dialog id="connectionDialog" aria-labelledby="connectionTitle" style="width:min(1240px,94vw);max-height:94vh;padding:16px;border:1px solid #cad3e5;border-radius:12px;box-sizing:border-box">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 id="connectionTitle">Connect platform</h2><button type="button" class="pill-btn" id="connectionDone">Done / Close</button></div>
   <p id="connectionStatus" role="status" aria-live="polite">Opening your private browser…</p>
@@ -369,21 +376,45 @@
   <p class="hint">This is your private server browser. Closing this view keeps your platform sessions saved. Posting waits until you close the sign-in view.</p>
 </dialog>
 <script>
-// All mutations carry a same-origin request marker; expired sessions return to sign-in.
+// The home page is public; private actions require a signed-in account.
+let currentUser = null;
+function promptSignIn() {
+  const dialog = document.getElementById('authPrompt');
+  if (!dialog.open) dialog.showModal();
+}
+async function requireSignIn() {
+  await authReady;
+  if (currentUser) return true;
+  promptSignIn();
+  return false;
+}
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}) => {
   const headers = new Headers(options.headers || {});
   if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) headers.set('X-Shorts-Request', '1');
   const response = await originalFetch(url, {...options, headers});
-  if (response.status === 401) location.replace('/login');
+  if (response.status === 401) {
+    currentUser = null;
+    document.getElementById('signIn').hidden = false;
+    document.getElementById('signOut').hidden = true;
+    if (options.method && options.method.toUpperCase() !== 'GET') promptSignIn();
+  }
   return response;
 };
-fetch('/api/auth/me').then(r => r.ok ? r.json() : null).then(user => {
-  if (user) document.getElementById('signedInEmail').textContent = user.email;
-}).catch(() => {});
+const authReady = originalFetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null).then(user => {
+  currentUser = user;
+  document.getElementById('signIn').hidden = !!user;
+  document.getElementById('signOut').hidden = !user;
+  document.getElementById('signedInEmail').textContent = user ? user.email : '';
+  if (!user) {
+    for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
+    document.getElementById('browserMessage').textContent = 'Connect your platforms after signing in.';
+    document.getElementById('canvasOverlay').textContent = 'Your posting progress will appear here.';
+  }
+});
 document.getElementById('signOut').onclick = async () => {
   const response = await fetch('/api/auth/logout', {method: 'POST'});
-  if (response.ok) location.replace('/login');
+  if (response.ok) location.replace('/');
 };
 
 const PLAT_BADGE = {
@@ -398,6 +429,8 @@ const PLAT_NAME = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Faceb
 let chromeIsRunning = false;
 let hostedPending = false;
 async function refreshAccounts() {
+  await authReady;
+  if (!currentUser) return;
   try {
     const a = await (await fetch('/api/accounts')).json();
     hostedPending = !!a.hosted_pending;
@@ -425,6 +458,7 @@ async function refreshAccounts() {
 setInterval(refreshAccounts, 6000); refreshAccounts();
 
 document.getElementById('startBrowserBtn').addEventListener('click', async (e) => {
+  if (!await requireSignIn()) return;
   const btn = e.currentTarget;
   btn.disabled = true; btn.textContent = 'Starting…';
   try {
@@ -448,7 +482,19 @@ function humanSize(b) {
 }
 function setupDropcard(cardId, inputId, onFile, onClear) {
   const card = document.getElementById(cardId), input = document.getElementById(inputId);
-  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); syncOptions(); });
+  input.addEventListener('click', async event => {
+    if (currentUser) return;
+    event.preventDefault();
+    if (await requireSignIn()) input.click();
+  });
+  card.addEventListener('drop', event => {
+    if (!currentUser) { event.preventDefault(); promptSignIn(); }
+  });
+  input.addEventListener('change', async () => {
+    if (!await requireSignIn()) { input.value = ''; return; }
+    if (input.files[0]) onFile(input.files[0]);
+    syncOptions();
+  });
   card.querySelector('.clear').addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();
     input.value = ''; card.classList.remove('filled'); onClear(); syncOptions();
@@ -579,6 +625,7 @@ syncMode(); syncMfk(); syncCounts(); syncOptions();
 /* ---------- submit ---------- */
 document.getElementById('form').addEventListener('submit', async e => {
   e.preventDefault();
+  if (!await requireSignIn()) return;
   const plats = checkedPlatforms();
   const msg = document.getElementById('msg'); msg.classList.remove('err');
   const mode = document.querySelector('input[name=mode]:checked').value;
@@ -620,7 +667,9 @@ document.getElementById('form').addEventListener('submit', async e => {
 const canvas = document.getElementById('screen'), cctx = canvas.getContext('2d'), canvasWrap = document.getElementById('canvasWrap');
 const canvasOverlay = document.getElementById('canvasOverlay');
 let frameW = 1100, frameH = 700, ws, wsRetryMs = 2000, wsTimer;
-function connectWs() {
+async function connectWs() {
+  await authReady;
+  if (!currentUser) return;
   if (hostedPending) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   clearTimeout(wsTimer);
@@ -666,6 +715,8 @@ function elapsed(startedSec) { const s = Math.max(0, Math.floor(Date.now() / 100
 const jobSelect = document.getElementById('jobSelect');
 jobSelect.addEventListener('change', refreshJobs);
 async function refreshJobs() {
+  await authReady;
+  if (!currentUser) return;
   let js;
   try { js = await (await fetch('/api/jobs')).json(); } catch (e) { return; }
   const selected = jobSelect.value;

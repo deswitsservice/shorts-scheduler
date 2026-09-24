@@ -24,6 +24,7 @@
   document.getElementById('connectionDone').onclick = () => dialog.close();
   document.querySelectorAll('[data-connect]').forEach(button => {
     button.onclick = async () => {
+      if (!await requireSignIn()) return;
       clear();
       const current = generation, platform = button.dataset.connect;
       document.getElementById('connectionTitle').textContent = 'Connect ' + names[platform];

@@ -62,7 +62,9 @@ class MultiUserTests(unittest.TestCase):
         self.assertEqual(self.a.post('/api/auth/register', json={}).status_code, 403)
         self.assertEqual(self.a.post('/api/auth/login', headers={'Origin': 'https://evil.example',
                          'X-Shorts-Request': '1'}, json={}).status_code, 403)
-        self.assertEqual(self.a.get('/', follow_redirects=False).status_code, 303)
+        self.assertEqual(self.a.get('/', follow_redirects=False).status_code, 200)
+        self.assertEqual(self.a.post('/api/schedule', headers=self.headers).status_code, 401)
+        self.assertEqual(self.app.state.tenants.workspaces, {})
         from starlette.websockets import WebSocketDisconnect
         with self.assertRaises(WebSocketDisconnect):
             with self.a.websocket_connect('/ws'):

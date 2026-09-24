@@ -16,7 +16,7 @@ import time
 
 from fastapi import FastAPI, Request
 from starlette.websockets import WebSocket
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 HERE = Path(__file__).resolve().parent
@@ -160,7 +160,7 @@ class TenantRouter:
                              lambda: self.store.user(token) is not None, platform)
             return
         if not user:
-            response = (RedirectResponse('/login', status_code=303) if scope['path'] == '/'
+            response = (FileResponse(HERE / 'static' / 'index.html') if scope['path'] == '/' and scope['method'] == 'GET'
                         else JSONResponse({'error': 'Please sign in.'}, status_code=401))
             await response(scope, receive, send)
             return

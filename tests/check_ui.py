@@ -19,7 +19,8 @@ with sync_playwright() as p:
     jobs=[job('new queued job','queued'), job('active job','running','youtube')]
     def route(r):
         path=r.request.url.split('test.local')[-1]
-        if path=='/api/jobs': r.fulfill(json=jobs)
+        if path=='/api/auth/me': r.fulfill(json={'id':'fixture', 'email':'test@example.com'})
+        elif path=='/api/jobs': r.fulfill(json=jobs)
         elif path=='/api/start': r.fulfill(status=503,json={'error':'Chrome did not become ready'})
         elif path=='/api/accounts': r.fulfill(json={'chrome':False})
         elif path=='/static/design.css': r.fulfill(path=str(STATIC/'design.css'),content_type='text/css')

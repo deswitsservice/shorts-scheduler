@@ -1,7 +1,7 @@
 # Hosted accounts and private browser workers
 
 Run `python3 webapp/server.py` or `uvicorn webapp.server:app --workers 1`.
-The public entry point now requires an app account. `webapp/engine.py` is an internal automation engine; do not expose it as an ASGI application.
+The home page is public. Upload attempts prompt for sign-in; private APIs, media and browser views require an app account. `webapp/engine.py` is an internal automation engine; do not expose it as an ASGI application.
 
 For local testing on this computer:
 
@@ -9,7 +9,7 @@ For local testing on this computer:
 SHORTS_COOKIE_SECURE=0 SHORTS_ALLOW_REGISTRATION=1 SHORTS_BROWSER_WORKERS=1 python3 webapp/server.py
 ```
 
-Open http://localhost:8000, create an account, then use another browser profile to create a second account. Sign-out invalidates the session on the server. App accounts and platform accounts are separate.
+Open http://localhost:8000 to browse the home page. Click Upload Video and sign in or create an account, then use another browser profile to create a second account. Sign-out invalidates the session on the server. App accounts and platform accounts are separate.
 
 For an HTTPS deployment, leave secure cookies enabled and set `SHORTS_PUBLIC_ORIGIN` to the exact public origin, such as `https://shorts.example.com`. Keep registration closed (the default) unless intentionally accepting new accounts. Use `SHORTS_DATA_DIR` for a persistent private volume accessible only to the service account. It contains the SQLite account database and user workspaces. Back it up securely; never serve this directory or commit it. Terminate TLS at the reverse proxy and trust forwarded headers only from that proxy.
 

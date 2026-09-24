@@ -34,6 +34,7 @@ with tempfile.TemporaryDirectory(prefix='shorts-connection-ui-') as data:
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.goto(url)
+            page.get_by_role('link', name='Sign in', exact=True).click()
             page.get_by_role('button', name='Create an account', exact=True).click()
             page.get_by_label('Email', exact=True).fill('fixture@example.com')
             page.get_by_label('Password', exact=True).fill('a private test password')
@@ -60,7 +61,7 @@ with tempfile.TemporaryDirectory(prefix='shorts-connection-ui-') as data:
             page.wait_for_function("!document.querySelector('#connectionDialog').open")
             assert page.locator('#connectionText').input_value() == ''
             page.get_by_role('button', name='Sign out', exact=True).click()
-            page.wait_for_url('**/login')
+            page.wait_for_url(url + '/')
             assert not errors, errors
             driver.close()
         print('Passed: app sign-up, private Chrome connection, real remote pointer/keyboard input, mobile text entry, close cleanup, logout; no JS errors.')
