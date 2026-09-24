@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Authenticated hosted entry point. Run with a single ASGI worker."""
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
+import asyncio
 import hashlib
 import hmac
 import importlib.util
@@ -14,12 +15,15 @@ import threading
 import time
 
 from fastapi import FastAPI, Request
+from starlette.websockets import WebSocket
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
+from webapp.browser_worker import BrowserWorker
+from webapp.browser_view import serve_view, SITES
 COOKIE = 'shorts_session'
 TTL = 7 * 24 * 3600
 
@@ -86,7 +90,7 @@ def password_hash(password, salt):
 
 class Workspace:
     """Private engine namespace: no shared jobs, bot globals, profiles or media mounts."""
-    def __init__(self, root, uid):
+    def __init__(self, root, uid, capacity):
         self.root = root / 'users' / uid
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.engine = load_module('engine_' + uid, HERE / 'engine.py')
@@ -94,10 +98,23 @@ class Workspace:
         engine.bot = load_module('bot_' + uid, ROOT / 'bot.py')
         engine.bot.HERE = str(self.root)
         engine.bot.PROFILE = str(self.root / 'chrome_profile')
-        # Hosted browser workers are intentionally unavailable until explicitly integrated.
-        # Never fall back to the desktop CDP endpoint or another user's browser.
-        engine.bot.chrome_running = lambda: False
-        engine.bot.start_chrome = self.unavailable
+        self.gate = asyncio.Lock()
+        self.posting = threading.Event()
+        run_job = engine.run_job
+        def posting_job(job):
+            self.posting.set()
+            try:
+                run_job(job)
+            finally:
+                self.posting.clear()
+                self.worker.touch()
+        engine.run_job = posting_job
+        def ready(port):
+            engine.bot.PORT = port
+            engine.CDP = f'http://127.0.0.1:{port}'
+        self.worker = BrowserWorker(engine.bot.PROFILE, capacity, ready)
+        engine.bot.chrome_running = self.worker.running
+        engine.bot.start_chrome = self.worker.start
         engine.UPLOADS = str(self.root / 'uploads')
         engine.THUMBS = str(self.root / 'shots' / 'thumbs')
         for directory in (engine.UPLOADS, engine.THUMBS):
@@ -107,21 +124,22 @@ class Workspace:
         engine.app.mount('/uploads', StaticFiles(directory=engine.UPLOADS))
         engine.app.mount('/thumbs', StaticFiles(directory=engine.THUMBS))
 
-    @staticmethod
-    def unavailable(*args, **kwargs):
-        raise RuntimeError('Hosted platform connections are not configured yet.')
+    def busy(self):
+        return self.posting.is_set() or any(not job.get('finished') for job in self.engine.jobs.values())
 
 
 class TenantRouter:
     def __init__(self, store):
         self.store = store
         self.workspaces = {}
+        self.enabled = os.environ.get('SHORTS_BROWSER_WORKERS', '0') == '1'
+        self.capacity = threading.BoundedSemaphore(int(os.environ.get('SHORTS_MAX_BROWSERS', '4')))
         self.lock = threading.Lock()
 
     def workspace(self, uid):
         with self.lock:
             if uid not in self.workspaces:
-                self.workspaces[uid] = Workspace(self.store.root, uid)
+                self.workspaces[uid] = Workspace(self.store.root, uid, self.capacity)
             return self.workspaces[uid]
 
     async def __call__(self, scope, receive, send):
@@ -129,33 +147,75 @@ class TenantRouter:
         conn = HTTPConnection(scope)
         user = self.store.user(conn.cookies.get(COOKIE))
         if scope['type'] == 'websocket':
-            # Live browser streams are disabled until a tenant-aware worker is connected.
-            await send({'type': 'websocket.close', 'code': 1008})
+            expected = os.environ.get('SHORTS_PUBLIC_ORIGIN') or str(conn.base_url).rstrip('/').replace('ws:', 'http:', 1).replace('wss:', 'https:', 1)
+            path = scope['path']
+            platform = path.removeprefix('/ws/connect/') if path.startswith('/ws/connect/') else None
+            if (not user or not self.enabled or conn.headers.get('origin') != expected
+                    or (path != '/ws' and platform not in SITES)):
+                await send({'type': 'websocket.close', 'code': 1008})
+                return
+            token = conn.cookies.get(COOKIE)
+            workspace = self.workspace(user['id'])
+            await serve_view(WebSocket(scope, receive, send), workspace,
+                             lambda: self.store.user(token) is not None, platform)
             return
         if not user:
             response = (RedirectResponse('/login', status_code=303) if scope['path'] == '/'
                         else JSONResponse({'error': 'Please sign in.'}, status_code=401))
             await response(scope, receive, send)
             return
-        if scope['path'] in ('/api/start', '/api/schedule'):
+        if not self.enabled and scope['path'] in ('/api/start', '/api/schedule'):
             await JSONResponse({'error': 'Hosted platform connections are not configured yet. '
                                 'Your account is ready; publishing will be available after a hosted worker is connected.'},
                                status_code=503)(scope, receive, send)
             return
-        if scope['path'] == '/api/accounts':
+        if not self.enabled and scope['path'] == '/api/accounts':
             await JSONResponse({'chrome': False, 'youtube': False, 'meta': False, 'tiktok': False,
                                 'hosted_pending': True})(scope, receive, send)
             return
         workspace = self.workspace(user['id'])
+        if scope['path'] in ('/api/start', '/api/schedule'):
+            if workspace.gate.locked():
+                await JSONResponse({'error': 'Finish connecting your account before posting.'}, status_code=409)(scope, receive, send)
+                return
+            async with workspace.gate:
+                try:
+                    await asyncio.to_thread(workspace.worker.start)
+                except Exception as exc:
+                    await JSONResponse({'error': str(exc)}, status_code=503)(scope, receive, send)
+                    return
+                await workspace.engine.app(scope, receive, send)
+            return
         await workspace.engine.app(scope, receive, send)
 
 
 def create_app(data_dir=None, secure_cookie=None):
     store = Store(data_dir or os.environ.get('SHORTS_DATA_DIR', ROOT / 'private_data'))
     secure = secure_cookie if secure_cookie is not None else os.environ.get('SHORTS_COOKIE_SECURE', '1') == '1'
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    app.state.store = store
     tenants = TenantRouter(store)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        async def reap_idle():
+            while True:
+                await asyncio.sleep(30)
+                for workspace in list(tenants.workspaces.values()):
+                    if (not workspace.gate.locked() and not workspace.busy()
+                            and time.monotonic() - workspace.worker.last_used > 1800):
+                        async with workspace.gate:
+                            await asyncio.to_thread(workspace.worker.stop)
+        reaper = asyncio.create_task(reap_idle())
+        try:
+            yield
+        finally:
+            reaper.cancel()
+            await asyncio.gather(reaper, return_exceptions=True)
+            for workspace in tenants.workspaces.values():
+                await asyncio.to_thread(workspace.engine.executor.shutdown, wait=True)
+                await asyncio.to_thread(workspace.worker.stop)
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.state.store = store
     app.state.tenants = tenants
 
     @app.middleware('http')

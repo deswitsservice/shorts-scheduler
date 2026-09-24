@@ -162,6 +162,7 @@
   .empty-note { color:var(--mute); font-size:12.5px; }
 
   .summary-bar { margin-top:16px; grid-column:1/-1; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  #platformConnections[hidden] { display:none !important; }
   .summary-bar[hidden] { display:none; }
   .summary-bar img.thumb { width:52px; height:80px; object-fit:cover; border-radius:8px; background:#eee; flex:none; }
   .summary-bar .thumb-ph { width:52px; height:80px; border-radius:8px; background:#eee; display:flex; align-items:center; justify-content:center; color:var(--mute); font-size:18px; flex:none; }
@@ -175,7 +176,7 @@
 <link rel="stylesheet" href="/static/design.css">
 </head>
 <body>
-<div role="status" style="padding:12px 24px;background:#fff4cf;color:#624900">Hosted account preview: your workspace is private. Platform connections and publishing are not available until hosted browser workers are configured.</div>
+
 <header>
   <div class="brand">
     <div class="logo">❤️</div>
@@ -196,13 +197,19 @@
     <div class="card" id="accounts">
       <div class="card-head">
         <div class="ic" style="background:#fdecea">📋</div>
-        <div><h2>Accounts Status</h2><p>Signed in directly in the app's Chrome window — not managed here.</p></div>
+        <div><h2>Accounts Status</h2><p>Connect your platforms here. Sessions are saved in your private browser.</p></div>
       </div>
       <div class="accounts-row">
         <div class="acct"><span class="badge" style="background:var(--yt)">▶</span><span class="name">YouTube</span><span class="st"><span class="dot" id="d-youtube"></span><span id="t-youtube">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span><span class="name">Instagram</span><span class="st"><span class="dot" id="d-meta1"></span><span id="t-meta1">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:var(--fb)">f</span><span class="name">Facebook</span><span class="st"><span class="dot" id="d-meta2"></span><span id="t-meta2">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:var(--tt)">♪</span><span class="name">TikTok</span><span class="st"><span class="dot" id="d-tiktok"></span><span id="t-tiktok">checking…</span></span></div>
+      </div>
+      <div id="platformConnections" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px" hidden>
+        <button type="button" class="pill-btn" data-connect="youtube">Connect YouTube</button>
+        <button type="button" class="pill-btn" data-connect="instagram">Connect Instagram</button>
+        <button type="button" class="pill-btn" data-connect="facebook">Connect Facebook</button>
+        <button type="button" class="pill-btn" data-connect="tiktok">Connect TikTok</button>
       </div>
       <div id="browserMessage" class="hint" role="status" aria-live="polite"></div>
       <div id="browserOff" class="browser-off" style="display:none">
@@ -350,6 +357,17 @@
   </section>
 </main>
 
+<dialog id="connectionDialog" aria-labelledby="connectionTitle" style="width:min(1240px,94vw);max-height:94vh;padding:16px;border:1px solid #cad3e5;border-radius:12px;box-sizing:border-box">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 id="connectionTitle">Connect platform</h2><button type="button" class="pill-btn" id="connectionDone">Done / Close</button></div>
+  <p id="connectionStatus" role="status" aria-live="polite">Opening your private browser…</p>
+  <canvas id="connectionScreen" width="1200" height="780" tabindex="0" aria-label="Interactive platform sign-in. Click a field, then type. Use the text box below on mobile." style="display:block;width:100%;height:auto;background:#f2f5fa;touch-action:none"></canvas>
+  <form id="connectionType" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px">
+    <label for="connectionText">Type into selected field</label><input id="connectionText" type="password" autocomplete="off" maxlength="4096" placeholder="Text is hidden for privacy" style="flex:1;min-width:160px">
+    <button type="submit" class="pill-btn">Send text</button>
+    <button type="button" class="pill-btn" data-remote-key="Tab">Tab</button><button type="button" class="pill-btn" data-remote-key="Enter">Enter</button><button type="button" class="pill-btn" data-remote-key="Backspace">Backspace</button>
+  </form>
+  <p class="hint">This is your private server browser. Closing this view keeps your platform sessions saved. Posting waits until you close the sign-in view.</p>
+</dialog>
 <script>
 // All mutations carry a same-origin request marker; expired sessions return to sign-in.
 const originalFetch = window.fetch.bind(window);
@@ -383,6 +401,7 @@ async function refreshAccounts() {
   try {
     const a = await (await fetch('/api/accounts')).json();
     hostedPending = !!a.hosted_pending;
+    document.getElementById('platformConnections').hidden = hostedPending;
     if (hostedPending) {
       document.getElementById('go').disabled = true;
       document.getElementById('browserOff').style.display = 'none';
@@ -730,5 +749,6 @@ async function refreshJobs() {
 }
 setInterval(refreshJobs, 1500); refreshJobs();
 </script>
+<script src="/static/connections.js"></script>
 </body>
 </html>
