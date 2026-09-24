@@ -260,10 +260,10 @@ def create_app(data_dir=None, secure_cookie=None):
         try:
             data = json.loads(body)
             email, password = data['email'].strip().lower(), data['password']
-            if not isinstance(password, str) or not 12 <= len(password) <= 128 or len(email) > 254 or '@' not in email:
+            if not isinstance(password, str) or not 8 <= len(password) <= 128 or len(email) > 254 or '@' not in email:
                 raise ValueError()
         except (ValueError, KeyError, TypeError, AttributeError):
-            return JSONResponse({'error': 'Enter an email and a password of 12–128 characters.'}, status_code=400)
+            return JSONResponse({'error': 'Enter an email and a password of 8–128 characters.'}, status_code=400)
         ip = request.client.host if request.client else 'unknown'
         if not store.allow_attempt('ip:' + ip) or not store.allow_attempt('email:' + email):
             return JSONResponse({'error': 'Too many attempts. Try again in 15 minutes.'}, status_code=429)
