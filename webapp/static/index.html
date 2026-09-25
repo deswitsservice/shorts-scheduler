@@ -494,6 +494,16 @@
   .steps-list .empty-note, .subcard .empty-note { color:var(--mute); font-weight:500; }
   @keyframes stepGlow { 0% { box-shadow:0 0 0 0 rgba(143,116,255,.55); } 100% { box-shadow:0 0 0 10px rgba(143,116,255,0); } }
   @media (prefers-reduced-motion:reduce) { .log-console .line.new, .log-console .line.latest .msg::after, .steps-list li.new, .steps-list .ic.now, .steps-list .ic.now::after { animation:none !important; } }
+
+  /* ---------- merged Automation Log ---------- */
+  .steps-list li .stx { flex:1; min-width:0; word-break:break-word; }
+  .steps-list li .ts { margin-left:14px; flex:none; font:500 11px ui-monospace,"SF Mono",Menlo,monospace; color:var(--mute); }
+  .steps-list li.warn .stx { color:#a86b00; } .steps-list li.err .stx { color:#c92a44; }
+  .steps-list .ic.warn { background:linear-gradient(135deg,#f5a524,#ffcf6b); color:#fff; }
+  .steps-list li.latest .stx { color:var(--ink); font-weight:800; }
+  .steps-list li.latest .stx::after { content:"\258D"; margin-left:4px; color:#8f74ff; animation:caret 1s steps(1) infinite; }
+  .steps-list li.err { background:linear-gradient(90deg,rgba(229,72,77,.10),transparent 80%); border-radius:10px; }
+  .steps-list { max-height:300px; }
   ::selection { background:#d9ccff; }
   ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-thumb { background:rgba(124,92,255,.3); border-radius:10px; border:2px solid transparent; background-clip:padding-box; }
   @media (max-width:640px) { header { padding:26px 20px 40px; } header h1 { font-size:25px; } .card { padding:18px; } main { padding:0 14px 30px; } }
@@ -686,12 +696,8 @@
 
     <div class="steps-log-grid">
       <div class="subcard">
-        <h3>Automation Steps</h3>
+        <h3>Automation Log</h3>
         <ul class="steps-list" id="stepsList"><li class="empty-note">Nothing running yet.</li></ul>
-      </div>
-      <div class="subcard">
-        <h3>Live Log</h3>
-        <div class="log-console" id="logConsole"><div class="empty-note">Nothing logged yet.</div></div>
       </div>
     </div>
 
@@ -1107,7 +1113,6 @@ async function refreshJobs() {
     document.getElementById('statusText').textContent = 'Idle';
     document.getElementById('statusPill').className = 'status-pill idle';
     document.getElementById('stepsList').textContent = 'No jobs in this server session.';
-    document.getElementById('logConsole').textContent = 'No jobs in this server session.';
     document.querySelectorAll('.plat-tab').forEach(tab => { tab.classList.remove('active'); tab.querySelector('.st').textContent = '—'; });
     document.getElementById('browserTitle').textContent = 'Chrome — idle';
     renderResults(null);
@@ -1140,38 +1145,29 @@ async function refreshJobs() {
   // steps + log for the active (or last) platform
   const focusPlat = job.current_platform || job.platforms.find(p => job.steps[p].state === 'failed') || job.platforms[job.platforms.length - 1];
   const step = job.steps[focusPlat];
-  const stepsEl = document.getElementById('stepsList'), logEl = document.getElementById('logConsole');
+  const stepsEl = document.getElementById('stepsList');
   if (step && ((step.log && step.log.length) || step.error)) {
     // Re-render only when the content changed, and animate only lines that are new (so polling never replays old ones).
     const key = job.id + ':' + focusPlat;
     const known = el => { if (el.dataset.key !== key) { el.dataset.key = key; el.dataset.n = '0'; el.dataset.h = ''; } return +el.dataset.n || 0; };
     const setHtml = (el, html, n) => { if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; } el.dataset.n = String(n); };
     const esc = t => String(t).replace(/</g, '&lt;');
-    const seenSteps = known(stepsEl), seenLog = known(logEl);
+    const seenSteps = known(stepsEl);
     const total = step.log.length + (step.error ? 1 : 0);
+    const ICON = { ok: '✓', warn: '!', err: '✕' };
     let stepsHtml = step.log.map((entry, i) => {
-      const isLast = i === step.log.length - 1;
-      const failed = isLast && step.state === 'failed';
-      const cls = failed ? 'fail' : (isLast && step.state === 'running' ? 'now' : 'done');
-      const icon = failed ? '✕' : (cls === 'now' ? '' : '✓');
-      return `<li class="${i >= seenSteps ? 'new' : ''}"><span class="ic ${cls}">${icon}</span><span class="stx">${esc(entry.msg)}</span></li>`;
+      const isLast = i === step.log.length - 1 && !step.error;
+      const kind = logKind(entry.msg), failed = isLast && step.state === 'failed';
+      const cls = failed || kind === 'err' ? 'fail' : (isLast && step.state === 'running' ? 'now' : (kind === 'warn' ? 'warn' : 'done'));
+      const icon = cls === 'fail' ? '✕' : cls === 'now' ? '' : cls === 'warn' ? '!' : '✓';
+      return `<li class="${kind}${cls === 'now' ? ' latest' : ''}${i >= seenSteps ? ' new' : ''}"><span class="ic ${cls}">${icon}</span><span class="stx">${esc(entry.msg)}</span><span class="ts">${fmtTs(entry.t)}</span></li>`;
     }).join('');
-    if (step.error) stepsHtml += `<li class="${step.log.length >= seenSteps ? 'new' : ''}"><span class="ic fail">✕</span><span class="stx">${esc(step.error)}</span></li>`;
+    if (step.error) stepsHtml += `<li class="err${step.log.length >= seenSteps ? ' new' : ''}"><span class="ic fail">✕</span><span class="stx">${esc(step.error)}</span><span class="ts">${job.finished ? fmtTs(job.finished) : ''}</span></li>`;
     const stickSteps = stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 40;
     setHtml(stepsEl, stepsHtml, total);
     if (stickSteps) stepsEl.scrollTop = stepsEl.scrollHeight;
-    const GLYPH = { info: '›', ok: '✓', warn: '⚠', err: '✕' };
-    let logHtml = step.log.map((entry, i) => {
-      const kind = logKind(entry.msg), isLast = i === step.log.length - 1 && !step.error;
-      return `<div class="line ${kind}${isLast && step.state === 'running' ? ' latest' : ''}${i >= seenLog ? ' new' : ''}"><span class="ts">${fmtTs(entry.t)}</span><span class="lg">${GLYPH[kind]}</span><span class="msg">${esc(entry.msg)}</span></div>`;
-    }).join('');
-    if (step.error) logHtml += `<div class="line err ${step.log.length >= seenLog ? 'new' : ''}"><span class="ts">${job.finished ? fmtTs(job.finished) : ''}</span><span class="lg">✕</span><span class="msg">${esc(step.error)}</span></div>`;
-    const stick = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
-    setHtml(logEl, logHtml, total);
-    if (stick) logEl.scrollTop = logEl.scrollHeight;
   } else {
     stepsEl.innerHTML = '<li class="empty-note">Nothing running yet.</li>'; stepsEl.dataset.key = ''; stepsEl.dataset.h = '';
-    logEl.innerHTML = '<div class="empty-note">Nothing logged yet.</div>'; logEl.dataset.key = ''; logEl.dataset.h = '';
   }
 
   // summary bar

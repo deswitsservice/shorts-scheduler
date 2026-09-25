@@ -62,7 +62,7 @@ with sync_playwright() as p:
     assert page.locator('#story').is_enabled()
     jobs[:]=[job('failed job','failed',error='Browser unavailable')]
     page.evaluate('refreshJobs()')
-    assert 'Browser unavailable' in page.locator('#logConsole').inner_text()
+    assert 'Browser unavailable' in page.locator('#stepsList').inner_text()
     assert page.locator('#statusText').inner_text()=='Failed'
     assert page.locator('#summaryAccounts').inner_text() == 'YouTube: UCverified'
     assert 'Preview only' in page.locator('#summaryWhen').inner_text()
