@@ -457,6 +457,43 @@
   button[type=submit]:disabled::before { content:""; position:absolute; left:22px; width:18px; height:18px; border:3px solid rgba(255,255,255,.45); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; }
   @keyframes stripes { to { background-position:48px 0,0 0; } }
   @media (prefers-reduced-motion:reduce) { #startBrowserBtn, button[type=submit]:disabled, button[type=submit]:disabled::before, .ripple { animation:none !important; } }
+
+  /* ---------- log console + steps timeline ---------- */
+  .log-console {
+    position:relative; background:linear-gradient(180deg,#0f0d1c,#181432); border:1px solid rgba(160,130,255,.22); border-radius:16px;
+    padding:10px 0; font:12.5px/1.7 ui-monospace,"SF Mono",Menlo,Consolas,monospace; max-height:230px; overflow-y:auto; color:#cfcaf0;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 14px 26px -18px rgba(20,10,60,.9); scrollbar-width:thin; scrollbar-color:rgba(160,130,255,.4) transparent;
+  }
+  .log-console .line { display:grid; grid-template-columns:62px 16px 1fr; gap:8px; align-items:baseline; padding:1px 14px 1px 12px; border-left:3px solid transparent; white-space:normal; transition:background .2s; }
+  .log-console .line:hover { background:rgba(255,255,255,.04); }
+  .log-console .line .ts { color:#6f6a99; font-size:11px; }
+  .log-console .line .lg { text-align:center; font-weight:800; color:#7c72b0; }
+  .log-console .line .msg { word-break:break-word; }
+  .log-console .line.ok .lg, .log-console .line.ok .msg { color:#63e6a8; }
+  .log-console .line.warn { border-left-color:#ffcf6b; } .log-console .line.warn .lg, .log-console .line.warn .msg { color:#ffd479; }
+  .log-console .line.err { border-left-color:#ff5c7a; background:linear-gradient(90deg,rgba(255,92,122,.16),transparent 70%); }
+  .log-console .line.err .lg, .log-console .line.err .msg { color:#ff8fa3; }
+  .log-console .line.latest { border-left-color:#a98bff; background:linear-gradient(90deg,rgba(124,92,255,.28),transparent 75%); }
+  .log-console .line.latest .msg { color:#fff; font-weight:600; }
+  .log-console .line.latest .msg::after { content:"\258D"; margin-left:4px; color:#c9b6ff; animation:caret 1s steps(1) infinite; }
+  .log-console .line.new { animation:logIn .38s cubic-bezier(.2,.9,.3,1) both; }
+  .log-console .empty-note { padding:6px 14px; color:#6f6a99; }
+  @keyframes logIn { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:none; } }
+  @keyframes caret { 50% { opacity:0; } }
+
+  .steps-list { max-height:230px; padding:2px 4px 2px 2px; scrollbar-width:thin; }
+  .steps-list li { position:relative; gap:0; padding:5px 0 5px 36px; min-height:32px; align-items:center; font-size:13px; font-weight:600; }
+  .steps-list li:not(:last-child)::after { content:""; position:absolute; left:12px; top:27px; bottom:-7px; width:2px; border-radius:2px; background:linear-gradient(180deg,#8f74ff,rgba(143,116,255,.12)); }
+  .steps-list .ic { position:absolute; left:2px; top:5px; width:22px; height:22px; font-size:12px; font-weight:800; box-shadow:0 5px 10px -4px rgba(0,0,0,.3); }
+  .steps-list .ic.done { background:linear-gradient(135deg,#2fbf71,#5be3a0); }
+  .steps-list .ic.fail { background:linear-gradient(135deg,#e5484d,#ff7a8a); }
+  .steps-list .ic.now { background:#fff; border:2.5px solid #8f74ff; box-shadow:0 0 0 0 rgba(143,116,255,.5); animation:stepGlow 1.4s ease-out infinite; }
+  .steps-list .ic.now::after { content:""; width:8px; height:8px; border-radius:50%; background:#8f74ff; animation:pulse 1s infinite; }
+  .steps-list li.new { animation:logIn .38s cubic-bezier(.2,.9,.3,1) both; }
+  .steps-list li.new .ic.done { animation:pop .5s cubic-bezier(.2,1.8,.4,1); }
+  .steps-list .empty-note, .subcard .empty-note { color:var(--mute); font-weight:500; }
+  @keyframes stepGlow { 0% { box-shadow:0 0 0 0 rgba(143,116,255,.55); } 100% { box-shadow:0 0 0 10px rgba(143,116,255,0); } }
+  @media (prefers-reduced-motion:reduce) { .log-console .line.new, .log-console .line.latest .msg::after, .steps-list li.new, .steps-list .ic.now, .steps-list .ic.now::after { animation:none !important; } }
   ::selection { background:#d9ccff; }
   ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-thumb { background:rgba(124,92,255,.3); border-radius:10px; border:2px solid transparent; background-clip:padding-box; }
   @media (max-width:640px) { header { padding:26px 20px 40px; } header h1 { font-size:25px; } .card { padding:18px; } main { padding:0 14px 30px; } }
@@ -1042,6 +1079,12 @@ async function connectWs() {
 connectWs();
 
 /* ---------- jobs / activity polling ---------- */
+function logKind(msg) {
+  if (/couldn'?t|error|fail|timed out|not found|refus|did not|never/i.test(msg)) return 'err';
+  if (/trimmed|skipp|verification|warning|dropped|no story/i.test(msg)) return 'warn';
+  if (/^done$|posted|scheduled|succeeded|complete|thumbnail set|cover set|published|ready to post/i.test(msg)) return 'ok';
+  return 'info';
+}
 function fmtTs(t) { const d = new Date(t * 1000); const p = n => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
 function elapsed(startedSec) { const s = Math.max(0, Math.floor(Date.now() / 1000 - startedSec)); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; }
 
@@ -1099,23 +1142,36 @@ async function refreshJobs() {
   const step = job.steps[focusPlat];
   const stepsEl = document.getElementById('stepsList'), logEl = document.getElementById('logConsole');
   if (step && ((step.log && step.log.length) || step.error)) {
-    stepsEl.innerHTML = step.log.map((entry, i) => {
+    // Re-render only when the content changed, and animate only lines that are new (so polling never replays old ones).
+    const key = job.id + ':' + focusPlat;
+    const known = el => { if (el.dataset.key !== key) { el.dataset.key = key; el.dataset.n = '0'; el.dataset.h = ''; } return +el.dataset.n || 0; };
+    const setHtml = (el, html, n) => { if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; } el.dataset.n = String(n); };
+    const esc = t => String(t).replace(/</g, '&lt;');
+    const seenSteps = known(stepsEl), seenLog = known(logEl);
+    const total = step.log.length + (step.error ? 1 : 0);
+    let stepsHtml = step.log.map((entry, i) => {
       const isLast = i === step.log.length - 1;
       const failed = isLast && step.state === 'failed';
       const cls = failed ? 'fail' : (isLast && step.state === 'running' ? 'now' : 'done');
       const icon = failed ? '✕' : (cls === 'now' ? '' : '✓');
-      return `<li><span class="ic ${cls}">${icon}</span>${entry.msg.replace(/</g, '&lt;')}</li>`;
+      return `<li class="${i >= seenSteps ? 'new' : ''}"><span class="ic ${cls}">${icon}</span><span class="stx">${esc(entry.msg)}</span></li>`;
     }).join('');
-    if (step.error) stepsEl.innerHTML += `<li><span class="ic fail">✕</span>${step.error.replace(/</g, '&lt;')}</li>`;
-    logEl.innerHTML = step.log.map((entry, i) => {
-      const isLast = i === step.log.length - 1;
-      return `<div class="line${isLast ? ' latest' : ''}"><span class="ts">[${fmtTs(entry.t)}]</span> ${entry.msg.replace(/</g, '&lt;')}</div>`;
+    if (step.error) stepsHtml += `<li class="${step.log.length >= seenSteps ? 'new' : ''}"><span class="ic fail">✕</span><span class="stx">${esc(step.error)}</span></li>`;
+    const stickSteps = stepsEl.scrollHeight - stepsEl.scrollTop - stepsEl.clientHeight < 40;
+    setHtml(stepsEl, stepsHtml, total);
+    if (stickSteps) stepsEl.scrollTop = stepsEl.scrollHeight;
+    const GLYPH = { info: '›', ok: '✓', warn: '⚠', err: '✕' };
+    let logHtml = step.log.map((entry, i) => {
+      const kind = logKind(entry.msg), isLast = i === step.log.length - 1 && !step.error;
+      return `<div class="line ${kind}${isLast && step.state === 'running' ? ' latest' : ''}${i >= seenLog ? ' new' : ''}"><span class="ts">${fmtTs(entry.t)}</span><span class="lg">${GLYPH[kind]}</span><span class="msg">${esc(entry.msg)}</span></div>`;
     }).join('');
-    if (step.error) logEl.innerHTML += `<div class="line err">[error] ${step.error.replace(/</g, '&lt;')}</div>`;
-    logEl.scrollTop = logEl.scrollHeight;
+    if (step.error) logHtml += `<div class="line err ${step.log.length >= seenLog ? 'new' : ''}"><span class="ts">${job.finished ? fmtTs(job.finished) : ''}</span><span class="lg">✕</span><span class="msg">${esc(step.error)}</span></div>`;
+    const stick = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+    setHtml(logEl, logHtml, total);
+    if (stick) logEl.scrollTop = logEl.scrollHeight;
   } else {
-    stepsEl.innerHTML = '<li class="empty-note">Nothing running yet.</li>';
-    logEl.innerHTML = '<div class="empty-note">Nothing logged yet.</div>';
+    stepsEl.innerHTML = '<li class="empty-note">Nothing running yet.</li>'; stepsEl.dataset.key = ''; stepsEl.dataset.h = '';
+    logEl.innerHTML = '<div class="empty-note">Nothing logged yet.</div>'; logEl.dataset.key = ''; logEl.dataset.h = '';
   }
 
   // summary bar
