@@ -660,6 +660,11 @@
   html[data-theme="dark"] .subcard h3 { color:var(--ink) !important; }
   html[data-theme="dark"] header .pill-btn { background:rgba(255,255,255,.1) !important; color:var(--ink) !important; }
   header .tag { color:#fff !important; }
+  main.live-focus { grid-template-columns:minmax(0,1fr) !important; max-width:1500px !important; }
+  main.live-focus > section:first-child { display:none; }
+  #newPostBtn { display:none; align-items:center; padding:8px 14px; border-radius:20px; border:1.5px solid rgba(160,130,255,.5); background:rgba(120,90,255,.18); color:var(--ink,#1f1a33); font:inherit; font-weight:600; cursor:pointer; }
+  #newPostBtn:hover { background:rgba(120,90,255,.32); }
+  main.live-focus #newPostBtn { display:inline-flex; }
 </style>
 </head>
 <body>
@@ -808,6 +813,7 @@
         <div class="ic" style="background:#eef0ff">⚡</div>
         <div><h2>Live Automation</h2><p>Watch the automation work, one platform at a time — view only.</p></div>
       </div>
+      <button type="button" class="pill-btn" id="newPostBtn">＋ New post</button>
       <div class="status-pill idle" id="statusPill"><span class="dot"></span><span id="statusText">Idle</span></div>
     </div>
 
@@ -1184,10 +1190,13 @@ document.getElementById('form').addEventListener('submit', async e => {
     const body = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(body.error || 'Something went wrong.');
     msg.textContent = 'Queued — watch it on the right.';
+    document.querySelector('main').classList.add('live-focus'); window.scrollTo({ top: 0, behavior: 'smooth' });
     refreshJobs();
   } catch (err) { msg.textContent = err.message; msg.classList.add('err'); }
   btn.disabled = false;
 });
+
+document.getElementById('newPostBtn').addEventListener('click', () => { document.querySelector('main').classList.remove('live-focus'); window.scrollTo({ top: 0 }); });
 
 /* ---------- live browser view (read-only) ---------- */
 const canvas = document.getElementById('screen'), cctx = canvas.getContext('2d'), canvasWrap = document.getElementById('canvasWrap');
