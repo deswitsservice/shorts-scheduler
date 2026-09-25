@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Shorts Scheduler</title>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('theme')||'dark'}catch(e){document.documentElement.dataset.theme='dark'}</script>
+
 <style>
   :root {
     --bg:#f4f0ec; --panel:#ffffff; --line:#e7e1da; --text:#2b2420; --mute:#8a7f74;
@@ -512,6 +514,90 @@
     .canvas-wrap .overlay::before, .canvas-wrap .overlay::after { animation:none !important; }
   }
 </style>
+
+<style id="theme-night">
+  /* ===== "Night" theme: deep indigo surfaces, dimmed aurora, glowing accents (default) ===== */
+  html[data-theme="dark"] { color-scheme:dark; }
+  html[data-theme="dark"] {
+    --ink:#efeaff; --ink2:#b9b2d8; --mute:#8f89b3; --text:#efeaff; --line:rgba(160,130,255,.2);
+    --glass:rgba(26,22,50,.66); --glass-b:rgba(160,130,255,.16);
+    --shadow:0 26px 50px -26px rgba(0,0,0,.85), 0 2px 8px -2px rgba(0,0,0,.4);
+  }
+  html[data-theme="dark"] body { background:#0b0917; color:var(--ink); }
+  html[data-theme="dark"] body::before { opacity:.4; background:radial-gradient(circle at 30% 30%, #5b3df5, transparent 62%), radial-gradient(circle at 70% 70%, #b0307a, transparent 60%); }
+  html[data-theme="dark"] body::after { opacity:.32; background:radial-gradient(circle at 60% 40%, #c2661f, transparent 60%), radial-gradient(circle at 30% 70%, #1f5fa8, transparent 62%); }
+  html[data-theme="dark"] header {
+    background:radial-gradient(120% 140% at 12% 0%, rgba(255,255,255,.16), transparent 45%), linear-gradient(105deg,#3b28b0 0%,#6f2fcf 28%,#b83577 58%,#cf6a38 84%,#d99a48 100%);
+    box-shadow:0 24px 50px -22px rgba(0,0,0,.8);
+  }
+  html[data-theme="dark"] .card { background:var(--glass); border-color:var(--glass-b); box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.07); }
+  html[data-theme="dark"] .card:hover { box-shadow:0 30px 56px -24px rgba(0,0,0,.9), 0 0 0 1px rgba(160,130,255,.28), inset 0 1px 0 rgba(255,255,255,.08); }
+  html[data-theme="dark"] .card-head h2, html[data-theme="dark"] label.field-label { color:var(--ink); }
+  html[data-theme="dark"] .card-head p { color:var(--ink2); }
+  html[data-theme="dark"] .card-head .ic { background:rgba(160,130,255,.2) !important; box-shadow:0 8px 18px -8px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.12); }
+
+  html[data-theme="dark"] input[type=text], html[data-theme="dark"] input[type=datetime-local], html[data-theme="dark"] textarea, html[data-theme="dark"] select {
+    background-color:rgba(12,10,28,.72); border-color:rgba(160,130,255,.24); color:var(--ink);
+  }
+  html[data-theme="dark"] select { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b9a6ff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+  html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color:#6d67a0; }
+  html[data-theme="dark"] input:focus, html[data-theme="dark"] textarea:focus, html[data-theme="dark"] select:focus { background-color:rgba(18,15,40,.95); border-color:#9b82ff; box-shadow:0 0 0 4px rgba(124,92,255,.25), 0 10px 24px -12px rgba(124,92,255,.7); }
+  html[data-theme="dark"] .dropcard { background:linear-gradient(160deg,rgba(40,33,78,.7),rgba(24,20,48,.7)); border-color:rgba(160,130,255,.38); }
+  html[data-theme="dark"] .dropcard:hover { border-color:#a98bff; box-shadow:0 16px 30px -16px rgba(124,92,255,.8); }
+  html[data-theme="dark"] .dropcard .clear { background:rgba(255,255,255,.1); color:var(--ink2); }
+  html[data-theme="dark"] .plat-chip, html[data-theme="dark"] .choice-card { background:rgba(32,27,62,.8); border-color:rgba(160,130,255,.22); color:var(--ink); }
+  html[data-theme="dark"] .plat-chip.on { background:linear-gradient(160deg,rgba(28,92,64,.6),rgba(20,66,48,.6)); border-color:#3ed08a; box-shadow:0 12px 24px -14px rgba(47,191,113,.8); }
+  html[data-theme="dark"] .choice-card.on { background:linear-gradient(160deg,rgba(92,68,196,.42),rgba(70,50,160,.38)); border-color:#9b82ff; box-shadow:0 12px 26px -14px rgba(124,92,255,.85); }
+  html[data-theme="dark"] .choice-card .d, html[data-theme="dark"] .row.chk-row .d, html[data-theme="dark"] .hint, html[data-theme="dark"] .counter { color:var(--mute); }
+
+  html[data-theme="dark"] .pill-btn:not(header .pill-btn) { background:linear-gradient(180deg,#262052,#1c1740); border-color:rgba(160,130,255,.38); color:#cbb9ff; box-shadow:0 8px 16px -10px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.08); }
+  html[data-theme="dark"] .pill-btn:not(header .pill-btn):hover { color:#fff; }
+  html[data-theme="dark"] #accounts button:not(#startBrowserBtn):not([data-connect]):not(#manualFinish) { color:#cbb9ff; }
+  html[data-theme="dark"] #manualStart { background:transparent !important; border-color:rgba(160,130,255,.55) !important; }
+  html[data-theme="dark"] .accounts-row .acct { background:rgba(32,27,62,.82); border-color:rgba(160,130,255,.2); }
+  html[data-theme="dark"] .accounts-row .acct .name { color:var(--ink); }
+  html[data-theme="dark"] .browser-off { background:linear-gradient(160deg,rgba(84,58,8,.42),rgba(70,46,6,.38)); border-color:rgba(240,200,120,.32); }
+  html[data-theme="dark"] .browser-off .msg { color:#f2d38d; }
+  html[data-theme="dark"] .accounts-row + div, html[data-theme="dark"] #manualStart + * { color:var(--ink2); }
+
+  html[data-theme="dark"] .status-pill.idle { background:rgba(255,255,255,.08); color:var(--ink2); box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); }
+  html[data-theme="dark"] .status-pill.running { background:rgba(229,72,77,.2); color:#ff9aa9; }
+  html[data-theme="dark"] .subcard, html[data-theme="dark"] .results { background:rgba(24,20,48,.78); border-color:rgba(160,130,255,.2); }
+  html[data-theme="dark"] .subcard h3 { color:#b9a6ff; }
+  html[data-theme="dark"] .journey { background:linear-gradient(160deg,rgba(34,28,66,.9),rgba(22,18,46,.9)); border-color:rgba(160,130,255,.22); box-shadow:0 18px 34px -20px rgba(0,0,0,.9); }
+  html[data-theme="dark"] .journey .jline { background:rgba(255,255,255,.12); }
+  html[data-theme="dark"] .journey .jn { color:var(--ink); }
+  html[data-theme="dark"] .journey .jn .lbl small { color:var(--mute); }
+  html[data-theme="dark"] .journey .jn.done .lbl small { color:#5be3a0; } html[data-theme="dark"] .journey .jn.failed .lbl small { color:#ff8fa3; }
+  html[data-theme="dark"] .journey .jn .mark { border-color:#1a1636; }
+  html[data-theme="dark"] .steps-list li.warn .stx { color:#ffcf6b; } html[data-theme="dark"] .steps-list li.err .stx { color:#ff8fa3; }
+  html[data-theme="dark"] .steps-list li.latest .stx { color:#fff; }
+  html[data-theme="dark"] .steps-list .ic.now { background:#1a1636; }
+  html[data-theme="dark"] .steps-list li.err { background:linear-gradient(90deg,rgba(229,72,77,.18),transparent 80%); }
+  html[data-theme="dark"] .steps-list li .ts { color:#7d77a8; }
+  html[data-theme="dark"] .results .headline { color:var(--ink); }
+  html[data-theme="dark"] .results .res { border-top-color:rgba(160,130,255,.16); }
+  html[data-theme="dark"] .summary-bar .info span { color:var(--mute); }
+  html[data-theme="dark"] dialog { background:#171330; color:var(--ink); border-color:rgba(160,130,255,.3) !important; box-shadow:0 40px 80px -20px rgba(0,0,0,.9); }
+  html[data-theme="dark"] dialog::backdrop { background:rgba(6,4,16,.7); backdrop-filter:blur(4px); }
+  html[data-theme="dark"] ::selection { background:#5a3fd0; color:#fff; }
+  html[data-theme="dark"] #themeToggle { font-size:16px; padding:8px 12px; }
+  /* ---- dark-mode legibility boost: brighter secondary text, clearer cards and controls ---- */
+  html[data-theme="dark"] { --mute:#bab4de; --ink2:#d6d1f2; }
+  html[data-theme="dark"] label.field-label, html[data-theme="dark"] .card-head h2 { color:#fff; }
+  html[data-theme="dark"] .card-head p, html[data-theme="dark"] .hint, html[data-theme="dark"] .counter { color:#c4bee6; font-size:12.5px; }
+  html[data-theme="dark"] .choice-card .t, html[data-theme="dark"] .row.chk-row .t, html[data-theme="dark"] .row.chk-row label, html[data-theme="dark"] .plat-chip { color:#fff; }
+  html[data-theme="dark"] .choice-card .d, html[data-theme="dark"] .row.chk-row .d { color:#c9c3ea; font-size:12.5px; line-height:1.5; }
+  html[data-theme="dark"] .plat-chip, html[data-theme="dark"] .choice-card { background:rgba(46,40,88,.86); border-color:rgba(180,155,255,.34); }
+  html[data-theme="dark"] .choice-card.on { background:linear-gradient(160deg,rgba(104,78,214,.55),rgba(80,58,176,.5)); border-color:#b39cff; }
+  html[data-theme="dark"] .card { background:rgba(34,29,66,.74); border-color:rgba(180,155,255,.22); }
+  html[data-theme="dark"] input[type=checkbox], html[data-theme="dark"] input[type=radio] { accent-color:#a98bff; width:17px; height:17px; }
+  html[data-theme="dark"] input[type=text], html[data-theme="dark"] input[type=datetime-local], html[data-theme="dark"] textarea, html[data-theme="dark"] select { border-color:rgba(180,155,255,.36); }
+  html[data-theme="dark"] .dropcard .ph-sub, html[data-theme="dark"] .dropcard .fsub { color:#c4bee6; }
+  html[data-theme="dark"] .accounts-row .acct .st, html[data-theme="dark"] .summary-bar .info span, html[data-theme="dark"] .steps-list li .ts { color:#b4aed8; }
+  html[data-theme="dark"] .schedule-fields, html[data-theme="dark"] .schedule-fields .hint { color:#d6d1f2; }
+
+</style>
 </head>
 <body>
 
@@ -526,7 +612,7 @@
   <div class="right">
     <div class="pill-btn">✨ Good content, brighter days</div>
 
-    <span id="signedInEmail"></span><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signOut" type="button" hidden>Sign out</button>
+    <span id="signedInEmail"></span><button class="pill-btn" id="themeToggle" type="button" aria-label="Switch between dark and light theme" title="Switch theme">🌙</button><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signOut" type="button" hidden>Sign out</button>
   </div>
 </header>
 
@@ -1255,6 +1341,15 @@ document.addEventListener('pointerdown', e => {
   span.className = 'ripple'; span.style.cssText = `width:${d}px;height:${d}px;left:${e.clientX - r.left - d / 2}px;top:${e.clientY - r.top - d / 2}px`;
   b.appendChild(span); setTimeout(() => span.remove(), 700);
 });
+</script>
+<script>
+/* light/dark toggle (saved in this browser) */
+(function () {
+  const root = document.documentElement, btn = document.getElementById('themeToggle');
+  const paint = () => { btn.textContent = root.dataset.theme === 'dark' ? '\u2600\ufe0f' : '\ud83c\udf19'; btn.title = root.dataset.theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'; };
+  btn.addEventListener('click', () => { root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark'; try { localStorage.setItem('theme', root.dataset.theme); } catch (e) {} paint(); });
+  paint();
+})();
 </script>
 <script src="/static/connections.js"></script>
 </body>
