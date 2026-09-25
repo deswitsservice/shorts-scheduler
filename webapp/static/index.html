@@ -274,7 +274,6 @@
               <input aria-label="Upload thumbnail" type="file" id="thumb" accept="image/png,image/jpeg">
             </div>
           </div>
-          <div class="row chk-row"><input type="checkbox" id="thumbTitle" checked><label for="thumbTitle" class="t">Put the title in the middle of the picture</label><span id="thumbTitleHint" class="hint"></span></div>
 
           <label class="field-label">Title <span class="req">*</span><span class="counter" id="titleCount">0/100</span></label>
           <input type="text" id="title" aria-label="Title" maxlength="140" placeholder="Good Things Take Time ❤️" required>
@@ -587,8 +586,6 @@ document.querySelectorAll('.plat-chip').forEach(chip => {
 
 function syncOptions() {
   const hasThumb = !!document.getElementById('thumb').files.length;
-  document.getElementById('thumbTitle').disabled = !hasThumb;
-  document.getElementById('thumbTitleHint').textContent = hasThumb ? '' : 'Choose a cover image to enable.';
   const story = document.getElementById('story');
   story.disabled = !checkedPlatforms().some(p => p === 'instagram' || p === 'facebook');
   if (story.disabled) story.checked = false;
@@ -699,7 +696,7 @@ document.getElementById('form').addEventListener('submit', async e => {
   const fd = new FormData();
   fd.append('file', document.getElementById('file').files[0]);
   if (document.getElementById('thumb').files[0]) fd.append('thumbnail', document.getElementById('thumb').files[0]);
-  fd.append('thumb_title', !document.getElementById('thumbTitle').disabled && document.getElementById('thumbTitle').checked ? 'true' : 'false');
+  fd.append('thumb_title', 'false');  // the uploaded cover is used exactly as given; no title is drawn on it
   fd.append('youtube_channel', document.getElementById('youtubeChannel').value);
   fd.append('instagram_account', document.getElementById('instagramAccount').value);
   fd.append('facebook_account', document.getElementById('facebookAccount').value);

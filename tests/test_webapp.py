@@ -41,8 +41,19 @@ class ScheduleTests(unittest.TestCase):
             'file': ('clip.mp4', b'placeholder; browser execution mocked', 'video/mp4'),
             'thumbnail': ('cover.png', image.getvalue(), 'image/png')})
 
+    def test_uploaded_thumbnail_is_used_exactly_as_given_by_default(self):
+        response = self.request()
+        self.assertEqual(response.status_code, 200)
+        job = server.jobs[response.json()['id']]
+        self.addCleanup(lambda: Path(job['vid']['thumbnail']).unlink(missing_ok=True))
+        self.assertTrue(job['thumbnail_url'].startswith('/uploads/'))
+        self.assertNotIn('_thumb_done', job['vid'])  # no title was composed onto it
+        # (The /uploads route itself is mounted per workspace in server.py, so check the file, not an HTTP fetch.)
+        self.assertTrue(job['vid']['thumbnail'].startswith(self.tmp.name))
+        self.assertEqual(Image.open(job['vid']['thumbnail']).size, (20, 30))  # untouched, not the 1080x1920 composite
+
     def test_generated_thumbnail_served_and_platform_deduplicated(self):
-        response = self.request(youtube_channel="UCtest", instagram_account="Creator", facebook_account="Page")
+        response = self.request(youtube_channel="UCtest", instagram_account="Creator", facebook_account="Page", thumb_title='true')
         self.assertEqual(response.status_code, 200)
         job = server.jobs[response.json()['id']]
         self.addCleanup(lambda: Path(job['vid']['thumbnail']).unlink(missing_ok=True))
