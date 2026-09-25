@@ -680,10 +680,13 @@
     main.live-focus .live-head .card-head p, main.live-focus #platTabs, main.live-focus #jobHistoryHint, main.live-focus label[for=jobSelect], main.live-focus #jobSelect { display:none; }
     main.live-focus .canvas-wrap { width:min(100%, calc((100vh - 195px) * 16 / 9)); margin:0 auto; }
     main.live-focus .steps-log-grid { grid-template-columns:minmax(0,1fr) !important; }
-    main.live-focus .steps-list { max-height:calc(100vh - 430px); min-height:110px; overflow:auto; }
-    main.live-focus #jobResults { max-height:170px; overflow:auto; }
+    main.live-focus:has(#jobResults:not([hidden])) .steps-list { max-height:80px; }
+    main.live-focus .steps-list { max-height:calc(100vh - 430px); min-height:60px; overflow:auto; }
     main.live-focus .journey { margin-top:6px; }
   }
+  .retry-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink2,#5b5473); }
+  .retry-btn { padding:8px 16px; border-radius:10px; border:0; cursor:pointer; font:inherit; font-weight:700; color:#fff; background:linear-gradient(135deg,#6d4dff,#c04fd6); box-shadow:0 6px 16px -8px rgba(109,77,255,.8); }
+  .retry-btn:disabled { opacity:.6; cursor:default; }
 </style>
 </head>
 <body>
@@ -1390,9 +1393,21 @@ function renderResults(job) {
     return `<div class="res ${ok ? 'ok' : 'bad'}" style="animation-delay:${0.15 + i * 0.18}s">
       <span class="rbadge" style="background:${PLAT_BADGE[p].bg}">${PLAT_BADGE[p].ic}</span>
       <b>${PLAT_NAME[p]}</b><span class="rstate"><span class="rmark" style="animation-delay:${0.35 + i * 0.18}s">${ok ? '✓' : '✕'}</span><span>${word}${why}</span></span></div>`;
-  }).join('');
+  }).join('') + (allOk ? '' : `<div class="retry-row"><span>Tried automatically up to 4 times per platform.</span><button type="button" class="retry-btn" id="retryBtn" data-job="${job.id}">\u21bb Retry failed</button></div>`);
   box.hidden = false;
 }
+document.getElementById('jobResults').addEventListener('click', async e => {
+  const btn = e.target.closest('#retryBtn'); if (!btn) return;
+  btn.disabled = true; btn.textContent = 'Retrying\u2026';
+  try {
+    const r = await fetch(`/api/jobs/${btn.dataset.job}/retry`, { method: 'POST' });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(body.error || 'Could not retry.');
+    focusJobId = btn.dataset.job; focusedJobs.delete(btn.dataset.job);
+    document.getElementById('jobResults').dataset.job = '';
+    refreshJobs();
+  } catch (err) { btn.disabled = false; btn.textContent = '\u21bb Retry failed'; btn.insertAdjacentHTML('afterend', `<span class="why" style="display:block;margin-top:6px">${String(err.message).replace(/</g, '&lt;')}</span>`); }
+});
 
 /* ---------- live journey animation ---------- */
 let lastSay = '';

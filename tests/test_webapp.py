@@ -82,5 +82,53 @@ class ScheduleTests(unittest.TestCase):
         self.submit.assert_not_called()
 
 
+class RetryTests(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(server.app)
+        server.jobs.clear()
+        self.job = {"id": "r1", "title": "T", "when": "Now", "platforms": ["youtube", "tiktok"], "dry": False,
+                    "vid": {"schedule": None, "title": "T", "description": "d"}, "accounts": {}, "created": 1, "started": 1, "finished": 2, "current_platform": None,
+                    "thumbnail_url": None, "steps": {"youtube": {"state": "done", "log": []}, "tiktok": {"state": "failed", "log": [], "error": "x"}}}
+        server.jobs["r1"] = self.job
+        self.submit = patch.object(server.executor, "submit").start()
+        self.addCleanup(patch.stopall)
+
+    def test_retry_requeues_only_failed_platforms(self):
+        r = self.client.post("/api/jobs/r1/retry")
+        self.assertEqual(r.json()["retrying"], ["tiktok"])
+        self.assertEqual(self.job["steps"]["youtube"]["state"], "done")
+        self.assertEqual(self.job["steps"]["tiktok"]["state"], "queued")
+        self.assertIsNone(self.job["finished"])
+        self.submit.assert_called_once()
+
+    def test_retry_rejected_when_running_or_nothing_failed(self):
+        self.job["finished"] = None
+        self.assertEqual(self.client.post("/api/jobs/r1/retry").status_code, 409)
+        self.job["finished"] = 2; self.job["steps"]["tiktok"]["state"] = "done"
+        self.assertEqual(self.client.post("/api/jobs/r1/retry").status_code, 400)
+
+    def test_auto_retries_three_times_then_fails(self):
+        self.job["steps"]["tiktok"] = {"state": "queued", "log": []}
+        self.job["steps"]["youtube"]["state"] = "done"
+        calls = []
+        def boom(*a, **k): calls.append(1); raise SystemExit("nope")
+        with patch.object(server.bot, "chrome_running", return_value=True), patch.object(server.bot, "tiktok", side_effect=boom), \
+                patch.object(server.bot, "show_idle_screen"), patch.object(server.time, "sleep"):
+            server.run_job(self.job)
+        self.assertEqual(len(calls), 4)  # first try + 3 retries
+        self.assertEqual(self.job["steps"]["tiktok"]["state"], "failed")
+
+    def test_auto_retry_stops_on_success(self):
+        self.job["steps"]["tiktok"] = {"state": "queued", "log": []}
+        seq = [SystemExit("once"), None]
+        def flaky(*a, **k):
+            r = seq.pop(0)
+            if r: raise r
+        with patch.object(server.bot, "chrome_running", return_value=True), patch.object(server.bot, "tiktok", side_effect=flaky), \
+                patch.object(server.bot, "show_idle_screen"), patch.object(server.time, "sleep"):
+            server.run_job(self.job)
+        self.assertEqual(self.job["steps"]["tiktok"]["state"], "done")
+
+
 if __name__ == '__main__':
     unittest.main()
