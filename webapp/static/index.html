@@ -699,7 +699,7 @@
   <div class="right">
     <div class="pill-btn">✨ Good content, brighter days</div>
 
-    <span id="signedInEmail"></span><button class="pill-btn" id="themeToggle" type="button" aria-label="Switch between dark and light theme" title="Switch theme">🌙</button><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signOut" type="button" hidden>Sign out</button>
+    <span id="signedInEmail" hidden></span><button class="pill-btn" id="themeToggle" type="button" aria-label="Switch between dark and light theme" title="Switch theme">🌙</button><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signOut" type="button" hidden>Sign out</button>
   </div>
 </header>
 
@@ -932,7 +932,7 @@ const authReady = originalFetch('/api/auth/me').then(r => r.ok ? r.json() : null
   currentUser = user;
   document.getElementById('signIn').hidden = !!user;
   document.getElementById('signOut').hidden = !user;
-  document.getElementById('signedInEmail').textContent = user ? user.email : '';
+  document.getElementById('signedInEmail').textContent = '';
   if (!user) {
     for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
     document.getElementById('browserMessage').textContent = 'Connect your platforms after signing in.';
