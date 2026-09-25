@@ -162,6 +162,8 @@
   .empty-note { color:var(--mute); font-size:12.5px; }
 
   .summary-bar { margin-top:16px; grid-column:1/-1; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  [hidden] { display:none !important; }
+  #platformConnections[hidden] { display:none !important; }
   .summary-bar[hidden] { display:none; }
   .summary-bar img.thumb { width:52px; height:80px; object-fit:cover; border-radius:8px; background:#eee; flex:none; }
   .summary-bar .thumb-ph { width:52px; height:80px; border-radius:8px; background:#eee; display:flex; align-items:center; justify-content:center; color:var(--mute); font-size:18px; flex:none; }
@@ -175,6 +177,7 @@
 <link rel="stylesheet" href="/static/design.css">
 </head>
 <body>
+
 <header>
   <div class="brand">
     <div class="logo">❤️</div>
@@ -186,7 +189,7 @@
   <div class="right">
     <div class="pill-btn">✨ Good content, brighter days</div>
 
-    <a class="pill-btn" href="#accounts">Account status ↓</a>
+    <span id="signedInEmail"></span><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signOut" type="button" hidden>Sign out</button>
   </div>
 </header>
 
@@ -195,7 +198,7 @@
     <div class="card" id="accounts">
       <div class="card-head">
         <div class="ic" style="background:#fdecea">📋</div>
-        <div><h2>Accounts Status</h2><p>Signed in directly in the app's Chrome window — not managed here.</p></div>
+        <div><h2>Accounts Status</h2><p>Connect your platforms here. Sessions are saved in your private browser.</p></div>
       </div>
       <div class="accounts-row">
         <div class="acct"><span class="badge" style="background:var(--yt)">▶</span><span class="name">YouTube</span><span class="st"><span class="dot" id="d-youtube"></span><span id="t-youtube">checking…</span></span></div>
@@ -203,10 +206,22 @@
         <div class="acct"><span class="badge" style="background:var(--fb)">f</span><span class="name">Facebook</span><span class="st"><span class="dot" id="d-meta2"></span><span id="t-meta2">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:var(--tt)">♪</span><span class="name">TikTok</span><span class="st"><span class="dot" id="d-tiktok"></span><span id="t-tiktok">checking…</span></span></div>
       </div>
+      <div id="platformConnections" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px" hidden>
+        <button type="button" class="pill-btn" data-connect="youtube">Connect YouTube</button>
+        <button type="button" class="pill-btn" data-connect="instagram">Connect Instagram</button>
+        <button type="button" class="pill-btn" data-connect="facebook">Connect Facebook</button>
+        <button type="button" class="pill-btn" data-connect="tiktok">Connect TikTok</button>
+      </div>
+      <div id="manualSignIn" hidden style="margin-top:12px;padding:12px;background:#f4f7ff;border-radius:10px">
+        <p class="hint">Google blocking in-app sign-in? Try signing in directly in Chrome on this Mac. This opens a separate window in front.</p>
+        <button type="button" class="pill-btn" id="manualStart">Sign in to YouTube in Chrome</button>
+        <button type="button" class="pill-btn" id="manualFinish" hidden>Continue after quitting Chrome</button>
+        <p id="manualStatus" role="status" aria-live="polite"></p>
+      </div>
       <div id="browserMessage" class="hint" role="status" aria-live="polite"></div>
       <div id="browserOff" class="browser-off" style="display:none">
         <span class="ic">⚠️</span>
-        <span class="msg">Start the background posting browser to connect your accounts. Posting progress will appear here in Live Automation.</span>
+        <span class="msg">Connect a platform above to sign in. This button starts the posting browser in the background using your saved sessions.</span>
         <button type="button" id="startBrowserBtn">▶ Start posting browser</button>
       </div>
     </div>
@@ -349,7 +364,65 @@
   </section>
 </main>
 
+<dialog id="authPrompt" aria-labelledby="authPromptTitle" style="width:min(420px,90vw);padding:24px;border:1px solid #cad3e5;border-radius:16px">
+  <h2 id="authPromptTitle">Sign in to upload your video</h2>
+  <p>Create an account or sign in to save your videos, connect your platforms, and start posting.</p>
+  <a class="pill-btn" href="/login?intent=upload">Sign in or create account</a>
+  <button class="pill-btn" type="button" onclick="document.getElementById('authPrompt').close()">Keep browsing</button>
+</dialog>
+<dialog id="connectionDialog" aria-labelledby="connectionTitle" style="width:min(1240px,94vw);max-height:94vh;padding:16px;border:1px solid #cad3e5;border-radius:12px;box-sizing:border-box">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 id="connectionTitle">Connect platform</h2><button type="button" class="pill-btn" id="connectionDone">Done / Close</button></div>
+  <p id="connectionStatus" role="status" aria-live="polite">Opening your private browser…</p>
+  <canvas id="connectionScreen" width="1200" height="780" tabindex="0" aria-label="Interactive platform sign-in. Click a field, then type. Use the text box below on mobile." style="display:block;width:100%;height:auto;background:#f2f5fa;touch-action:none"></canvas>
+  <form id="connectionType" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px">
+    <label for="connectionText">Type into selected field</label><input id="connectionText" type="password" autocomplete="off" maxlength="4096" placeholder="Text is hidden for privacy" style="flex:1;min-width:160px">
+    <button type="submit" class="pill-btn">Send text</button>
+    <button type="button" class="pill-btn" data-remote-key="Tab">Tab</button><button type="button" class="pill-btn" data-remote-key="Enter">Enter</button><button type="button" class="pill-btn" data-remote-key="Backspace">Backspace</button>
+  </form>
+  <p class="hint">This is your private server browser. Closing this view keeps your platform sessions saved. Posting waits until you close the sign-in view.</p>
+</dialog>
 <script>
+// The home page is public; private actions require a signed-in account.
+let currentUser = null;
+function promptSignIn() {
+  const dialog = document.getElementById('authPrompt');
+  if (!dialog.open) dialog.showModal();
+}
+async function requireSignIn() {
+  await authReady;
+  if (currentUser) return true;
+  promptSignIn();
+  return false;
+}
+const originalFetch = window.fetch.bind(window);
+window.fetch = async (url, options = {}) => {
+  const headers = new Headers(options.headers || {});
+  if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) headers.set('X-Shorts-Request', '1');
+  const response = await originalFetch(url, {...options, headers});
+  if (response.status === 401) {
+    currentUser = null;
+    document.getElementById('signIn').hidden = false;
+    document.getElementById('signOut').hidden = true;
+    if (options.method && options.method.toUpperCase() !== 'GET') promptSignIn();
+  }
+  return response;
+};
+const authReady = originalFetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null).then(user => {
+  currentUser = user;
+  document.getElementById('signIn').hidden = !!user;
+  document.getElementById('signOut').hidden = !user;
+  document.getElementById('signedInEmail').textContent = user ? user.email : '';
+  if (!user) {
+    for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
+    document.getElementById('browserMessage').textContent = 'Connect your platforms after signing in.';
+    document.getElementById('canvasOverlay').textContent = 'Your posting progress will appear here.';
+  }
+});
+document.getElementById('signOut').onclick = async () => {
+  const response = await fetch('/api/auth/logout', {method: 'POST'});
+  if (response.ok) location.replace('/');
+};
+
 const PLAT_BADGE = {
   youtube: { bg: 'var(--yt)', ic: '▶' },
   instagram: { bg: 'linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))', ic: '◎' },
@@ -360,9 +433,39 @@ const PLAT_NAME = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Faceb
 
 /* ---------- accounts ---------- */
 let chromeIsRunning = false;
+let hostedPending = false;
+let manualSignInActive = false;
 async function refreshAccounts() {
+  await authReady;
+  if (!currentUser) return;
   try {
     const a = await (await fetch('/api/accounts')).json();
+    hostedPending = !!a.hosted_pending;
+    const wasManual = manualSignInActive;
+    manualSignInActive = !!a.manual_active;
+    document.getElementById('manualSignIn').hidden = !a.manual_available;
+    document.getElementById('manualStart').hidden = manualSignInActive;
+    document.getElementById('manualFinish').hidden = !manualSignInActive;
+    for (const button of document.querySelectorAll('[data-connect]')) button.disabled = manualSignInActive;
+    if (manualSignInActive) {
+      document.getElementById('go').disabled = true;
+      document.getElementById('browserOff').style.display = 'none';
+      document.getElementById('manualStatus').textContent = 'Sign in directly in Chrome. When finished, quit that Chrome instance with Command-Q, then click Continue. Posting and live viewing are paused.';
+      document.getElementById('canvasOverlay').textContent = 'Direct sign-in is open. Live Automation resumes after you finish.';
+      document.getElementById('canvasWrap').classList.remove('has-frame');
+      for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Sign-in in progress';
+      return;
+    }
+    if (wasManual) document.getElementById('go').disabled = false;
+    document.getElementById('platformConnections').hidden = hostedPending;
+    if (hostedPending) {
+      document.getElementById('go').disabled = true;
+      document.getElementById('browserOff').style.display = 'none';
+      document.getElementById('browserMessage').textContent = 'Platform connections are not configured for this hosted preview.';
+      document.getElementById('canvasOverlay').textContent = 'Live Automation will be available when hosted platform connections are configured.';
+      for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
+      return;
+    }
     chromeIsRunning = !!a.chrome;
     document.getElementById('browserOff').style.display = chromeIsRunning ? 'none' : 'flex';
     const set = (dotId, textId, on, onText, offText) => {
@@ -379,12 +482,16 @@ setInterval(refreshAccounts, 6000); refreshAccounts();
 
 document.getElementById('startBrowserBtn').addEventListener('click', async (e) => {
   const btn = e.currentTarget;
+  if (!await requireSignIn()) return;
   btn.disabled = true; btn.textContent = 'Starting…';
+  document.getElementById('browserMessage').textContent = 'Starting your background browser… This can take up to 30 seconds.';
   try {
     const response = await fetch('/api/start', { method: 'POST' });
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.error || 'Unable to start the posting browser.');
-    document.getElementById('browserMessage').textContent = 'Posting browser ready. Progress will appear in Live Automation.';
+    document.getElementById('browserMessage').textContent = document.getElementById('manualSignIn').hidden
+      ? 'Posting browser ready in the background. Use Connect above to sign in. Progress appears here when posting starts.'
+      : 'Posting browser ready in the background. For YouTube login, click Sign in to YouTube in Chrome above.';
     await refreshAccounts(); connectWs();
   } catch (err) {
     document.getElementById('browserMessage').textContent = err.message || 'Cannot reach the server. Try again.';
@@ -401,7 +508,19 @@ function humanSize(b) {
 }
 function setupDropcard(cardId, inputId, onFile, onClear) {
   const card = document.getElementById(cardId), input = document.getElementById(inputId);
-  input.addEventListener('change', () => { if (input.files[0]) onFile(input.files[0]); syncOptions(); });
+  input.addEventListener('click', async event => {
+    if (currentUser) return;
+    event.preventDefault();
+    if (await requireSignIn()) input.click();
+  });
+  card.addEventListener('drop', event => {
+    if (!currentUser) { event.preventDefault(); promptSignIn(); }
+  });
+  input.addEventListener('change', async () => {
+    if (!await requireSignIn()) { input.value = ''; return; }
+    if (input.files[0]) onFile(input.files[0]);
+    syncOptions();
+  });
   card.querySelector('.clear').addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();
     input.value = ''; card.classList.remove('filled'); onClear(); syncOptions();
@@ -531,7 +650,9 @@ syncMode(); syncMfk(); syncCounts(); syncOptions();
 
 /* ---------- submit ---------- */
 document.getElementById('form').addEventListener('submit', async e => {
+  const form = e.currentTarget;
   e.preventDefault();
+  if (!await requireSignIn()) return;
   const plats = checkedPlatforms();
   const msg = document.getElementById('msg'); msg.classList.remove('err');
   const mode = document.querySelector('input[name=mode]:checked').value;
@@ -541,7 +662,7 @@ document.getElementById('form').addEventListener('submit', async e => {
   if (plats.includes('youtube') && !mfkEl) { msg.textContent = 'Answer whether this video is made for kids.'; msg.classList.add('err'); return; }
   if (!document.getElementById('file').files[0]) { msg.textContent = 'Choose a video file.'; msg.classList.add('err'); return; }
   syncCounts();
-  if (!e.currentTarget.reportValidity()) return;
+  if (!form.reportValidity()) return;
   const fd = new FormData();
   fd.append('file', document.getElementById('file').files[0]);
   if (document.getElementById('thumb').files[0]) fd.append('thumbnail', document.getElementById('thumb').files[0]);
@@ -573,7 +694,10 @@ document.getElementById('form').addEventListener('submit', async e => {
 const canvas = document.getElementById('screen'), cctx = canvas.getContext('2d'), canvasWrap = document.getElementById('canvasWrap');
 const canvasOverlay = document.getElementById('canvasOverlay');
 let frameW = 1100, frameH = 700, ws, wsRetryMs = 2000, wsTimer;
-function connectWs() {
+async function connectWs() {
+  await authReady;
+  if (!currentUser) return;
+  if (hostedPending || manualSignInActive) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   clearTimeout(wsTimer);
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
@@ -602,6 +726,7 @@ function connectWs() {
     img.src = 'data:image/jpeg;base64,' + m.d;
   };
   ws.onclose = () => {
+    if (hostedPending || manualSignInActive) return;
     canvasWrap.classList.remove('has-frame');
     canvasOverlay.textContent = 'Browser view disconnected. Reconnecting…';
     wsTimer = setTimeout(connectWs, wsRetryMs);
@@ -617,6 +742,8 @@ function elapsed(startedSec) { const s = Math.max(0, Math.floor(Date.now() / 100
 const jobSelect = document.getElementById('jobSelect');
 jobSelect.addEventListener('change', refreshJobs);
 async function refreshJobs() {
+  await authReady;
+  if (!currentUser) return;
   let js;
   try { js = await (await fetch('/api/jobs')).json(); } catch (e) { return; }
   const selected = jobSelect.value;
@@ -700,5 +827,6 @@ async function refreshJobs() {
 }
 setInterval(refreshJobs, 1500); refreshJobs();
 </script>
+<script src="/static/connections.js"></script>
 </body>
 </html>

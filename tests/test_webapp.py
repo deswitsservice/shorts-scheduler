@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from webapp import server
+from webapp import engine as server
 
 
 class ScheduleTests(unittest.TestCase):

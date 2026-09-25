@@ -6,7 +6,7 @@ from playwright.async_api import async_playwright
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bot
-from webapp.server import find_automation_page
+from webapp.engine import find_automation_page
 
 with sync_playwright() as p:
     b=p.chromium.launch(channel='chrome',headless=True)
