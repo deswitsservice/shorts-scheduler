@@ -211,6 +211,15 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
                     on_step("Setting custom thumbnail")
                     ti.first.set_input_files(vid["thumbnail"], timeout=60000)
                     pg.wait_for_timeout(3000)
+                    # YouTube gates custom thumbnails behind a one-time account-verification prompt
+                    # after some number of uses per day (confirmed live) -- that verification needs a
+                    # human, so cancel it and continue without a custom thumbnail rather than getting
+                    # stuck on a click nothing will ever satisfy.
+                    verify = pg.get_by_text("One-time verification needed")
+                    if verify.count():
+                        on_step("Thumbnail needs one-time verification -- skipping it")
+                        pg.get_by_role("button", name="Cancel").click(timeout=5000)
+                        pg.wait_for_timeout(1000)
             # The title box appears almost immediately (well under 10% uploaded) -- it's not a signal
             # the transfer is done, only that the form is ready. Without waiting for the real "Upload
             # complete" milestone, a caller can reuse this tab (fresh_page() picks whichever tab is
@@ -218,10 +227,17 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             # then silently aborts it, and the script has no way to detect that (confirmed during
             # testing -- a video reported as successfully scheduled never actually finished uploading).
             on_step("Waiting for upload to finish")
-            pg.wait_for_function(
-                "document.querySelector('ytcp-video-upload-progress')?.innerText.includes('Upload complete')",
-                timeout=600000,
-            )
+            # A JS-string wait_for_function() doesn't work here: YouTube Studio's Trusted Types CSP
+            # rejects Playwright's eval-based predicate outright (confirmed live -- "violates this
+            # document's Trusted Type assignment requirements"). Poll the same element's text from the
+            # Python side instead, which only uses native accessibility/DOM reads, not in-page eval.
+            progress = pg.locator("ytcp-video-upload-progress")
+            for _ in range(600):
+                if progress.count() and "Upload complete" in progress.inner_text():
+                    break
+                pg.wait_for_timeout(1000)
+            else:
+                sys.exit("youtube: upload never reached 'Upload complete' within 10 minutes")
             on_step("Setting audience and content options")
             mfk_name = "VIDEO_MADE_FOR_KIDS_MFK" if vid.get("made_for_kids") else "VIDEO_MADE_FOR_KIDS_NOT_MFK"
             pg.locator(f"[name={mfk_name}]").first.click()
@@ -383,6 +399,14 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
                 if t.is_checked() != story:
                     t.click(force=True)
                     pg.wait_for_timeout(500)
+                    # Turning story-sharing off (when it was on by default) raises a confirmation
+                    # dialog of its own -- "Stop sharing to Facebook Story" -- which otherwise sits
+                    # on top of and blocks every later click in the flow, including the final submit
+                    # button (confirmed live: this is what "Share" appearing stuck actually was).
+                    confirm = pg.get_by_role("button", name="Confirm")
+                    if confirm.count():
+                        confirm.click(timeout=5000)
+                        pg.wait_for_timeout(800)
             print(f"{target}: story toggle set to {'ON' if story else 'OFF'} ({toggles.count()} found)")
         elif story:
             print(f"{target}: WARNING no story option on this screen; posted without story")
@@ -395,9 +419,18 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
         print(f"{target}: ready to {'post now' if now else f'post at {when:%b %-d %-I:%M %p}'}")
         if commit:
             on_step("Sharing post" if now else "Scheduling post")
-            btn_name = "Share now" if now else "Schedule"
-            pg.get_by_role("button", name=btn_name).last.click()
-            pg.wait_for_selector("text=/Reel scheduled|scheduled to publish|shared|posted/i", timeout=90000)
+            # "Share now"/"Schedule" (checked above via `when`) are the *mode-selector tabs*, not the
+            # submit button -- clicking an already-selected tab is a no-op, which is exactly what
+            # happened live (confirmed: the panel stayed put and nothing was submitted). The real
+            # submit button is labeled "Schedule" for scheduling (so it happened to share a name with
+            # its tab, masking this bug when only the scheduled path had been tested) but "Share" --
+            # not "Share now" -- for immediate publish.
+            btn_name = "Share" if now else "Schedule"
+            pg.get_by_role("button", name=btn_name, exact=True).last.click()
+            # Publishing a Reel isn't necessarily instant even for `now=True`: Meta shows "Reel
+            # processing -- once it finishes, it will be published and you'll be notified" and this is
+            # itself the confirmation of a successful submission (confirmed live), not a failure state.
+            pg.wait_for_selector("text=/Reel scheduled|scheduled to publish|shared|posted|Reel processing/i", timeout=90000)
             try:
                 pg.get_by_role("button", name="Done").click(timeout=5000)
             except Exception:
