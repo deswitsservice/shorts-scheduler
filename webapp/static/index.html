@@ -624,18 +624,23 @@ function syncCounts() {
   const limits = plats.map(p => CAPTION_LIMITS[p]).filter(n => n);
   const tightest = limits.length ? Math.min(...limits) : null;
   const dEl = document.getElementById('descCount');
-  if (tightest) { dEl.textContent = `${[...full].length} / ${tightest}`; dEl.classList.toggle('warn', [...full].length > tightest); }
+  const chars = [...full].length;
+  const over = plats.filter(p => CAPTION_LIMITS[p] && chars > CAPTION_LIMITS[p]);
+  const label = { youtube: 'YouTube', instagram: 'Instagram', tiktok: 'TikTok' };
+  if (tightest) {
+    dEl.textContent = `${chars} / ${tightest}` + (over.length ? ` \u2014 will be trimmed for ${over.map(p => label[p]).join(', ')}` : '');
+    dEl.classList.toggle('warn', over.length > 0);
+  }
   else { dEl.textContent = `${[...full].length} characters`; dEl.classList.remove('warn'); }
   const n = hashtagCount(full);
   const tEl = document.getElementById('tagCount');
   const igLimit = plats.includes('instagram');
-  tEl.textContent = igLimit ? `${n} / ${IG_MAX_HASHTAGS} hashtags` : `${n} hashtags`;
+  tEl.textContent = igLimit ? `${n} / ${IG_MAX_HASHTAGS} hashtags` + (n > IG_MAX_HASHTAGS ? ' \u2014 extras dropped for Instagram' : '') : `${n} hashtags`;
   tEl.classList.toggle('warn', igLimit && n > IG_MAX_HASHTAGS);
   const tc = document.getElementById('titleCount'), len = [...document.getElementById('title').value.trim()].length;
-  tc.textContent = plats.includes('youtube') ? `${len}/100` : `${len} characters`; tc.classList.toggle('warn', plats.includes('youtube') && len > 100);
-  document.getElementById('title').setCustomValidity(plats.includes('youtube') && len > 100 ? 'YouTube titles must be 100 characters or fewer.' : '');
-  document.getElementById('desc').setCustomValidity(tightest && [...full].length > tightest ? `Caption and hashtags exceed ${tightest} characters.` : '');
-  document.getElementById('tags').setCustomValidity(igLimit && n > IG_MAX_HASHTAGS ? `Caption and tags contain more than ${IG_MAX_HASHTAGS} hashtags.` : '');
+  tc.textContent = plats.includes('youtube') ? `${len}/100` + (len > 100 ? ' \u2014 will be trimmed for YouTube' : '') : `${len} characters`; tc.classList.toggle('warn', plats.includes('youtube') && len > 100);
+  // Over-limit text no longer blocks the form: the server trims each platform's copy to its own limit.
+  ['title', 'desc', 'tags'].forEach(id => document.getElementById(id).setCustomValidity(''));
   syncSchedule();
 }
 document.getElementById('desc').addEventListener('input', syncCounts);

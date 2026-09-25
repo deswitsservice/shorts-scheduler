@@ -34,21 +34,58 @@ def count_hashtags(text):
     return len(re.findall(r"(?<!\w)#\w+", text))
 
 
+_TAG_TAIL = re.compile(r"(?:^|\n)[ \t]*((?:#\w+[ \t]*)+)\s*$")
+
+
+def _word_cut(text, room):
+    """Cut text to at most `room` characters, backing up to a word boundary when that costs little."""
+    if len(text) <= room:
+        return text
+    cut = text[:room]
+    space = cut.rfind(" ")
+    if space > room * 0.6:
+        cut = cut[:space]
+    return cut.rstrip(" ,;:-\n")
+
+
+def fit_title(title, limit=100):
+    """YouTube's title box is capped; trim instead of rejecting. Returns (title, note or None)."""
+    if len(title) <= limit:
+        return title, None
+    fitted = _word_cut(title, limit - 1) + "\u2026"
+    return fitted, f"Title trimmed from {len(title)} to {len(fitted)} characters (YouTube's limit is {limit})."
+
+
+def fit_caption(platform, text):
+    """Trim a caption to what `platform` accepts instead of rejecting the whole job. Trailing hashtags are kept
+    and the body text is shortened (on a word boundary, with an ellipsis); Instagram's extra hashtags are dropped
+    from the end. Returns (text, note or None) so the caller can tell the user exactly what changed."""
+    notes, out = [], text
+    if platform == "instagram" and count_hashtags(out) > INSTAGRAM_MAX_HASHTAGS:
+        before = count_hashtags(out)
+        for m in reversed(list(re.finditer(r"(?<!\w)#\w+", out))[INSTAGRAM_MAX_HASHTAGS:]):
+            out = out[:m.start()] + out[m.end():]
+        out = re.sub(r"[ \t]+(\n|$)", r"\1", out).rstrip()
+        notes.append(f"{before - INSTAGRAM_MAX_HASHTAGS} hashtags dropped (Instagram allows {INSTAGRAM_MAX_HASHTAGS}).")
+    limit = CAPTION_LIMITS.get(platform)
+    if limit and len(out) > limit:
+        before = len(out)
+        m = _TAG_TAIL.search(out)
+        tail = m.group(1).strip() if m else ""
+        body = out[:m.start()].rstrip() if m else out
+        if tail and len(tail) + 2 > limit * 0.5:  # hashtags alone would eat the caption; drop them instead
+            tail = ""
+        room = limit - (len(tail) + 2 if tail else 0) - 1  # -1 for the ellipsis
+        out = _word_cut(body, room) + "\u2026" + (("\n\n" + tail) if tail else "")
+        notes.append(f"Caption trimmed from {before} to {len(out)} characters ({platform}'s limit is {limit}).")
+    return out, (" ".join(notes) or None)
+
+
 def validate_job(plats, title, desc, when, publish_now):
     """Return an error string, or None if the job looks postable. Catches the checks a user would otherwise only
     discover after waiting through a multi-minute browser run that fails deep inside one platform's flow."""
-    if "youtube" in plats and len(title) > 100:
-        return f"Title is {len(title)} characters; YouTube's limit is 100."
-    applicable = [CAPTION_LIMITS[p] for p in plats if p in CAPTION_LIMITS]
-    if applicable and len(desc) > min(applicable):
-        tightest = min(applicable, key=lambda n: n)
-        which = [p for p in plats if CAPTION_LIMITS.get(p) == tightest]
-        return (f"Description + hashtags is {len(desc)} characters; {'/'.join(which)}'s limit is {tightest}. "
-                f"Shorten the description or remove some tags.")
-    if "instagram" in plats:
-        n = count_hashtags(desc)
-        if n > INSTAGRAM_MAX_HASHTAGS:
-            return f"{n} hashtags in the description; Instagram allows at most {INSTAGRAM_MAX_HASHTAGS}."
+    # Title/caption length and Instagram hashtag count are no longer rejected here: run_job() trims each
+    # platform's copy to its own limit (fit_title / fit_caption) and tells the user what it changed.
     if not publish_now:
         now = datetime.datetime.now()
         if when <= now + datetime.timedelta(minutes=2):
@@ -108,14 +145,22 @@ def run_job(job):
 
         try:
             commit = not job["dry"]
+            pvid = dict(vid)  # each platform gets its own copy, trimmed to that platform's limits
             if plat == "youtube":
-                bot.youtube(vid, commit=commit, on_step=on_step)
+                pvid["title"], note = fit_title(vid["title"])
+                if note:
+                    on_step(note)
+            pvid["description"], note = fit_caption(plat, vid["description"])
+            if note:
+                on_step(note)
+            if plat == "youtube":
+                bot.youtube(pvid, commit=commit, on_step=on_step)
             elif plat == "instagram":
-                bot.meta(vid, "instagram", commit=commit, on_step=on_step)
+                bot.meta(pvid, "instagram", commit=commit, on_step=on_step)
             elif plat == "facebook":
-                bot.meta(vid, "facebook", commit=commit, on_step=on_step)
+                bot.meta(pvid, "facebook", commit=commit, on_step=on_step)
             elif plat == "tiktok":
-                bot.tiktok(vid, commit=commit, on_step=on_step)
+                bot.tiktok(pvid, commit=commit, on_step=on_step)
             step["state"] = "done" if commit else "checked (dry run)"
         except SystemExit as e:
             step["state"], step["error"] = "failed", str(e)
