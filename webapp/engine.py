@@ -121,6 +121,8 @@ def friendly_error(exc):
 
 
 # ---------- jobs ----------
+MAX_RETRIES = 3
+RETRY_WAITS = (5, 15, 30)
 PLATFORM_HOST = {"youtube": "studio.youtube.com", "instagram": "business.facebook.com", "facebook": "business.facebook.com", "tiktok": "tiktok.com"}
 
 
@@ -135,7 +137,8 @@ def run_job(job):
     job["started"] = time.time()
     for plat in job["platforms"]:
         step = job["steps"][plat]
-        step["state"] = "running"
+        if step["state"] == "done" or step["state"].startswith("checked"):
+            continue  # already posted; a retry only redoes what failed
         step["log"] = []
         job["current_platform"] = plat
 
@@ -143,29 +146,37 @@ def run_job(job):
             step["detail"] = msg
             step["log"].append({"t": time.time(), "msg": msg})
 
-        try:
-            commit = not job["dry"]
-            pvid = dict(vid)  # each platform gets its own copy, trimmed to that platform's limits
-            if plat == "youtube":
-                pvid["title"], note = fit_title(vid["title"])
+        for attempt in range(1, MAX_RETRIES + 2):
+            step["state"], step["error"] = "running", None
+            step["attempt"] = attempt
+            try:
+                commit = not job["dry"]
+                pvid = dict(vid)  # each platform gets its own copy, trimmed to that platform's limits
+                if plat == "youtube":
+                    pvid["title"], note = fit_title(vid["title"])
+                    if note:
+                        on_step(note)
+                pvid["description"], note = fit_caption(plat, vid["description"])
                 if note:
                     on_step(note)
-            pvid["description"], note = fit_caption(plat, vid["description"])
-            if note:
-                on_step(note)
-            if plat == "youtube":
-                bot.youtube(pvid, commit=commit, on_step=on_step)
-            elif plat == "instagram":
-                bot.meta(pvid, "instagram", commit=commit, on_step=on_step)
-            elif plat == "facebook":
-                bot.meta(pvid, "facebook", commit=commit, on_step=on_step)
-            elif plat == "tiktok":
-                bot.tiktok(pvid, commit=commit, on_step=on_step)
-            step["state"] = "done" if commit else "checked (dry run)"
-        except SystemExit as e:
-            step["state"], step["error"] = "failed", str(e)
-        except Exception as e:  # noqa: BLE001
-            step["state"], step["error"] = "failed", friendly_error(e)
+                if plat == "youtube":
+                    bot.youtube(pvid, commit=commit, on_step=on_step)
+                elif plat == "instagram":
+                    bot.meta(pvid, "instagram", commit=commit, on_step=on_step)
+                elif plat == "facebook":
+                    bot.meta(pvid, "facebook", commit=commit, on_step=on_step)
+                elif plat == "tiktok":
+                    bot.tiktok(pvid, commit=commit, on_step=on_step)
+                step["state"] = "done" if commit else "checked (dry run)"
+                break
+            except SystemExit as e:
+                step["state"], step["error"] = "failed", str(e)
+            except Exception as e:  # noqa: BLE001
+                step["state"], step["error"] = "failed", friendly_error(e)
+            if attempt <= MAX_RETRIES:
+                wait = RETRY_WAITS[min(attempt - 1, len(RETRY_WAITS) - 1)]
+                on_step(f"Attempt {attempt} failed ({step['error']}). Retrying in {wait}s (retry {attempt} of {MAX_RETRIES})...")
+                time.sleep(wait)
     bot.ACTIVE_TARGET_ID = None
     job["current_platform"] = None
     job["finished"] = time.time()
@@ -269,6 +280,27 @@ async def schedule(
     jobs[jid] = job
     executor.submit(run_job, job)
     return {"id": jid}
+
+
+@app.post("/api/jobs/{jid}/retry")
+def retry_job(jid: str):
+    job = jobs.get(jid)
+    if not job:
+        return JSONResponse({"error": "Job not found."}, status_code=404)
+    if not job.get("finished"):
+        return JSONResponse({"error": "This job is still running."}, status_code=409)
+    failed = [p for p in job["platforms"] if job["steps"][p]["state"] == "failed"]
+    if not failed:
+        return JSONResponse({"error": "Nothing failed on this job."}, status_code=400)
+    sched = job["vid"].get("schedule")
+    if sched and datetime.datetime.strptime(sched, "%Y-%m-%d %H:%M") < datetime.datetime.now() + datetime.timedelta(minutes=10):
+        return JSONResponse({"error": "The scheduled time has passed or is too close. Submit the video again with a new time."}, status_code=400)
+    for p in failed:
+        job["steps"][p] = {"state": "queued", "log": []}
+    job["finished"] = None
+    job["current_platform"] = None
+    executor.submit(run_job, job)
+    return {"id": jid, "retrying": failed}
 
 
 @app.get("/api/jobs")
