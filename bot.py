@@ -129,7 +129,25 @@ def _auto_dismiss_dialogs(pg):
     the call that triggered the navigation hangs/errors instead of just proceeding. Each call site gets
     a fresh Page wrapper (new connect_over_cdp() per with-block), so this is safe to attach every time."""
     pg.on("dialog", lambda dialog: dialog.accept())
+    _restore_if_minimized(pg)
     return pg
+
+
+def _restore_if_minimized(pg):
+    """Chrome doesn't render a minimized window, so screenshots hang and every actionability check waits
+    forever on "element is not stable" -- and TikTok builds its cover from a rendered frame, so a
+    minimized window saves a blank cover (all confirmed live). Un-minimize without foregrounding."""
+    try:
+        session = pg.context.new_cdp_session(pg)
+        try:
+            tid = session.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+            wid = session.send("Browser.getWindowForTarget", {"targetId": tid})["windowId"]
+            if session.send("Browser.getWindowBounds", {"windowId": wid})["bounds"].get("windowState") == "minimized":
+                session.send("Browser.setWindowBounds", {"windowId": wid, "bounds": {"windowState": "normal"}})
+        finally:
+            session.detach()
+    except Exception:
+        pass  # best effort; never block a posting job on window housekeeping
 
 
 def get_page(ctx, host):
@@ -479,6 +497,13 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
         ed.scroll_into_view_if_needed(); ed.click()
         pg.keyboard.press("Meta+A"); pg.keyboard.press("Backspace")
         pg.keyboard.insert_text(caption); pg.wait_for_timeout(1200)
+        if len(ed.inner_text().strip()) < min(20, len(caption)):
+            # The first click can miss the editor (confirmed live: a post went out with a placeholder /
+            # empty caption and TikTok won't let you fix the cover afterwards). Retry once, then fail loudly.
+            ed.click(force=True); pg.keyboard.press("Meta+A"); pg.keyboard.press("Backspace")
+            pg.keyboard.insert_text(caption); pg.wait_for_timeout(1200)
+            if len(ed.inner_text().strip()) < min(20, len(caption)):
+                sys.exit("tiktok: caption did not go into the editor")
         if not now:
             on_step("Setting publish schedule")
             pg.locator("input[value=schedule]").locator("xpath=..").click(); pg.wait_for_timeout(1200)
