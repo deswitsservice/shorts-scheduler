@@ -665,6 +665,25 @@
   #newPostBtn { display:none; align-items:center; padding:8px 14px; border-radius:20px; border:1.5px solid rgba(160,130,255,.5); background:rgba(120,90,255,.18); color:var(--ink,#1f1a33); font:inherit; font-weight:600; cursor:pointer; }
   #newPostBtn:hover { background:rgba(120,90,255,.32); }
   main.live-focus #newPostBtn { display:inline-flex; }
+  @media (min-width:1000px) {
+    body:has(main.live-focus) header { min-height:0 !important; padding:10px 30px !important; }
+    body:has(main.live-focus) header .tag { display:none; }
+    main.live-focus #newPostBtn, main.live-focus .live-head .card-head h2 { white-space:nowrap; }
+    main.live-focus { padding-top:10px !important; }
+    main.live-focus > section.card { display:grid; grid-template-columns:minmax(330px,.8fr) minmax(0,1.6fr); grid-auto-rows:min-content; column-gap:20px; align-content:start; margin-top:0; padding:14px 18px; }
+    main.live-focus > section.card > * { grid-column:1; min-width:0; }
+    main.live-focus > section.card > .browser-frame { grid-column:2; grid-row:1 / span 12; align-self:start; }
+    main.live-focus .live-head { flex-wrap:nowrap; gap:8px; align-items:center; }
+    main.live-focus .live-head .card-head .ic { display:none; }
+    main.live-focus #newPostBtn, main.live-focus #statusPill { flex:none; }
+    main.live-focus #newPostBtn { padding:6px 12px; }
+    main.live-focus .live-head .card-head p, main.live-focus #platTabs, main.live-focus #jobHistoryHint, main.live-focus label[for=jobSelect], main.live-focus #jobSelect { display:none; }
+    main.live-focus .canvas-wrap { width:min(100%, calc((100vh - 195px) * 16 / 9)); margin:0 auto; }
+    main.live-focus .steps-log-grid { grid-template-columns:minmax(0,1fr) !important; }
+    main.live-focus .steps-list { max-height:calc(100vh - 430px); min-height:110px; overflow:auto; }
+    main.live-focus #jobResults { max-height:170px; overflow:auto; }
+    main.live-focus .journey { margin-top:6px; }
+  }
 </style>
 </head>
 <body>
