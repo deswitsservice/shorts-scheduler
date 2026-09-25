@@ -6,7 +6,7 @@ read the output for any text (not a lone symbol) below 4.5:1 (3:1 for large text
 """
 import json, time, sys
 from playwright.sync_api import sync_playwright
-html = open('webapp/static/index.html').read(); conn = open('webapp/static/connections.js').read()
+html = open('webapp/static/index.html').read(); conn = open('webapp/static/connections.js').read(); design = open('webapp/static/design.css').read()
 now = time.time()
 def L(*m): return [{"t": now - 30 + i * 3, "msg": x} for i, x in enumerate(m)]
 JOBS = [{"id": "j1", "title": "T", "when": "Now", "platforms": ["youtube", "instagram", "facebook", "tiktok"], "dry": False,
@@ -52,6 +52,7 @@ def run(theme, accounts, jobs, tag, dialogs=False):
             if u.endswith('/api/jobs'): r.fulfill(json=jobs)
             elif u.endswith('/api/accounts'): r.fulfill(json=accounts)
             elif u.endswith('/connections.js'): r.fulfill(body=conn, content_type='application/javascript')
+            elif u.endswith('/static/design.css'): r.fulfill(body=design, content_type='text/css')
             elif u.rstrip('/').endswith('fake.local'): r.fulfill(body=html, content_type='text/html')
             else: r.fulfill(json={})
         pg.route('http://fake.local/**', route); pg.goto('http://fake.local/'); pg.wait_for_timeout(2600)
