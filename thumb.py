@@ -158,7 +158,7 @@ def compose_marker(src, title, out, style="marker", emphasis=None, region=(0.13,
     from PIL import ImageFilter
     img = Image.open(src).convert("RGB")
     w, h = img.size
-    words = title.split()
+    words = " ".join(EMOJI.sub("", title).split()).split()  # the marker fonts have no emoji glyphs (drew an empty box)
     path, idx = MARKER_FONTS[style]
     variable = path.endswith("Caveat.ttf")
 
