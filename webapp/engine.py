@@ -188,7 +188,7 @@ async def schedule(
     made_for_kids: str = Form(""),  # "true" / "false", required when youtube is a selected platform
     dry: str = Form("false"),
     story: str = Form("false"),
-    thumb_title: str = Form("true"),
+    thumb_title: str = Form("false"),
     youtube_channel: str = Form(""),
     instagram_account: str = Form(""),
     facebook_account: str = Form(""),
