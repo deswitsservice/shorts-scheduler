@@ -598,6 +598,62 @@
   html[data-theme="dark"] .schedule-fields, html[data-theme="dark"] .schedule-fields .hint { color:#d6d1f2; }
 
 </style>
+
+<style id="theme-contrast">
+  /* ===== Contrast pass (WCAG AA): found with an automated audit of every text element, both themes ===== */
+  :root { --mute:#665e8c; --ok-text:#12803e; --bad-text:#c22843; }
+  html[data-theme="dark"] { --ok-text:#5be3a0; --bad-text:#ff8fa3; }
+  input::placeholder, textarea::placeholder { color:#746c99 !important; }
+  html[data-theme="dark"] input::placeholder, html[data-theme="dark"] textarea::placeholder { color:#968fbd !important; }
+
+  /* status text + glyph chips: readable greens/reds/ambers in both themes */
+  .results .res.ok .rstate, .results .res.ok .rstate span:last-child { color:var(--ok-text); }
+  .results .res.bad .rstate, .results .res.bad .rstate span:last-child { color:var(--bad-text); }
+  .journey .jn.done .lbl small { color:var(--ok-text); } .journey .jn.failed .lbl small { color:var(--bad-text); }
+  .plat-chip .tick, .journey .jn.done .mark, .results .res.ok .rmark, .accounts-row .tick { background:#15803d; }
+  .steps-list .ic.done { background:linear-gradient(135deg,#0f7a3a,#1f9a55); color:#fff; }
+  .steps-list .ic.fail, .journey .jn.failed .mark, .results .res.bad .rmark { background:linear-gradient(135deg,#b8213c,#d93a52); color:#fff; }
+  .steps-list .ic.warn { background:linear-gradient(135deg,#f5a524,#ffc44d); color:#3d2600; }
+  .steps-list li.warn .stx { color:#8a5a00; } .steps-list li.err .stx { color:#b0203a; }
+  html[data-theme="dark"] .steps-list li.warn .stx { color:#ffcf6b; } html[data-theme="dark"] .steps-list li.err .stx { color:#ff8fa3; }
+
+  /* gradient buttons: darker stops + a soft text shadow so white labels always clear the gradient */
+  button[type=submit], button[type=submit]:disabled { background-image:linear-gradient(100deg,#5637e8 0%,#9b2fd6 40%,#cf347c 75%,#dd612f 100%); text-shadow:0 1px 3px rgba(30,5,70,.5); }
+  button[type=submit]:disabled { background-image:repeating-linear-gradient(115deg,rgba(255,255,255,.14) 0 12px,transparent 12px 24px),linear-gradient(100deg,#5637e8,#9b2fd6 50%,#cf347c); background-size:48px 100%,100% 100%; }
+  #startBrowserBtn { background:linear-gradient(100deg,#5637e8,#9b2fd6 55%,#cf347c) !important; text-shadow:0 1px 3px rgba(30,5,70,.5); }
+  #manualFinish { background:linear-gradient(90deg,#0f7a3a,#15803d) !important; text-shadow:0 1px 2px rgba(0,40,10,.4); }
+  .pill-btn:not(header .pill-btn):hover, #accounts button:hover { text-shadow:0 1px 2px rgba(30,5,70,.45); }
+  .plat-chip .badge, .accounts-row .acct .badge, .results .res .rbadge { text-shadow:0 1px 2px rgba(0,0,0,.35); }
+
+  /* header: white text needs a darker glass behind it on the bright gradient */
+  header { text-shadow:0 1px 10px rgba(40,10,90,.35); }
+  header .pill-btn, header .gear, header #themeToggle { background:rgba(28,12,78,.34); border-color:rgba(255,255,255,.4); }
+  header .pill-btn:hover, header #themeToggle:hover { background:rgba(28,12,78,.5); }
+
+  /* lavender cards in light mode: hint text on tinted fills */
+  html:not([data-theme="dark"]) .choice-card.on .d, html:not([data-theme="dark"]) #scheduleHint, html:not([data-theme="dark"]) .choice-card.on .hint { color:#514978; }
+  html[data-theme="dark"] .choice-card.on .d, html[data-theme="dark"] #scheduleHint, html[data-theme="dark"] .choice-card.on .hint { color:#e6e0fb; }
+
+  :root { --fb:#1568e3; }
+  #manualStart { color:#4b2fc9 !important; }
+  html[data-theme="dark"] #manualStart { color:#d9ccff !important; }
+  header .tag, header h1 { text-shadow:0 1px 12px rgba(40,10,90,.6); }
+  html:not([data-theme="dark"]) header { background:radial-gradient(120% 140% at 12% 0%, rgba(255,255,255,.22), transparent 45%), linear-gradient(105deg,#4d31e6 0%,#8a3fee 26%,#e0457f 55%,#f07d3e 80%,#f0b04e 100%); }
+  html:not([data-theme="dark"]) .subcard h3 { color:#5a3fe0; }
+  html:not([data-theme="dark"]) .pill-btn:not(header .pill-btn), html:not([data-theme="dark"]) #accounts button { color:#4b2fc9; }
+  /* every input type gets the themed field look (the connect dialog's masked field is type=password) */
+  input[type=password], input[type=search], input[type=email], input[type=number], input[type=url] { border:1.5px solid rgba(124,92,255,.22); border-radius:12px; padding:10px 12px; font:inherit; background:#fff; color:var(--ink); }
+  html[data-theme="dark"] input[type=password], html[data-theme="dark"] input[type=search], html[data-theme="dark"] input[type=email], html[data-theme="dark"] input[type=number], html[data-theme="dark"] input[type=url] { background:rgba(12,10,28,.72); border-color:rgba(180,155,255,.36); color:var(--ink); }
+  input[type=password]:focus, input[type=search]:focus, input[type=email]:focus { outline:0; border-color:#8f74ff; box-shadow:0 0 0 4px rgba(124,92,255,.2); }
+  /* ---- dark theme leftovers ---- */
+  html[data-theme="dark"] #manualSignIn { background:rgba(26,22,56,.78) !important; border:1px solid rgba(160,130,255,.28) !important; }
+  html[data-theme="dark"] #manualSignIn .hint, html[data-theme="dark"] #manualSignIn p { color:#d3cdf0 !important; }
+  html[data-theme="dark"] #accounts [data-connect] { background:linear-gradient(180deg,#2a2358,#1d1842); color:#d9ccff; border-color:rgba(160,130,255,.4); }
+  html[data-theme="dark"] #accounts [data-connect]:hover { color:#fff; }
+  html[data-theme="dark"] #manualStart { color:#d9ccff !important; }
+  html[data-theme="dark"] .summary-bar .thumb-ph { background:rgba(255,255,255,.08); }
+  html[data-theme="dark"] .summary-bar img.thumb { background:rgba(255,255,255,.08); }
+</style>
 </head>
 <body>
 
