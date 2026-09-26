@@ -25,6 +25,9 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 from webapp.browser_worker import BrowserWorker
 from webapp.browser_view import serve_view, SITES
+HELPER_MODE = os.environ.get('SHORTS_HELPER_MODE', '0') == '1'
+HELPER_ONLINE_SECONDS = 20
+CLAIM_STALE_SECONDS = 300
 COOKIE = 'shorts_session'
 TTL = 7 * 24 * 3600
 
@@ -50,6 +53,13 @@ class Store:
                     token TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS attempts (
                     key TEXT PRIMARY KEY, count INTEGER NOT NULL, reset REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS helpers (
+                    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+                    created REAL NOT NULL, last_seen REAL, sessions TEXT NOT NULL DEFAULT '{}', revoked INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS pair_codes (
+                    code TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires REAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS job_history (
+                    user_id TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, updated REAL NOT NULL, PRIMARY KEY (user_id, id));
             ''')
         self.path.chmod(0o600)
 
@@ -72,6 +82,63 @@ class Store:
                              (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
         return dict(row) if row else None
 
+    PAIR_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+    def create_pair_code(self, uid):
+        raw = ''.join(secrets.choice(self.PAIR_ALPHABET) for _ in range(8))
+        with self.connect() as db:
+            db.execute('DELETE FROM pair_codes WHERE user_id=? OR expires<=?', (uid, time.time()))
+            db.execute('INSERT INTO pair_codes VALUES (?,?,?)', (hashlib.sha256(raw.encode()).hexdigest(), uid, time.time() + 600))
+        return raw[:4] + '-' + raw[4:]
+
+    def redeem_pair_code(self, code, name):
+        raw = ''.join(ch for ch in code.upper() if ch.isalnum())
+        digest = hashlib.sha256(raw.encode()).hexdigest()
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT user_id FROM pair_codes WHERE code=? AND expires>?', (digest, time.time())).fetchone()
+            if not row:
+                return None
+            db.execute('DELETE FROM pair_codes WHERE code=?', (digest,))
+            token, hid = secrets.token_urlsafe(32), secrets.token_hex(8)
+            db.execute('INSERT INTO helpers (id,user_id,token,name,created) VALUES (?,?,?,?,?)',
+                       (hid, row['user_id'], hashlib.sha256(token.encode()).hexdigest(), name[:60] or 'My computer', time.time()))
+        return token
+
+    def helper_for_token(self, token):
+        if not token:
+            return None
+        with self.connect() as db:
+            row = db.execute('SELECT * FROM helpers WHERE token=? AND revoked=0', (hashlib.sha256(token.encode()).hexdigest(),)).fetchone()
+        return dict(row) if row else None
+
+    def touch_helper(self, hid, sessions=None):
+        with self.connect() as db:
+            if sessions is None:
+                db.execute('UPDATE helpers SET last_seen=? WHERE id=?', (time.time(), hid))
+            else:
+                db.execute('UPDATE helpers SET last_seen=?, sessions=? WHERE id=?', (time.time(), json.dumps(sessions), hid))
+
+    def helpers(self, uid):
+        with self.connect() as db:
+            rows = db.execute('SELECT id,name,created,last_seen,sessions FROM helpers WHERE user_id=? AND revoked=0 ORDER BY created', (uid,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def revoke_helper(self, uid, hid):
+        with self.connect() as db:
+            return db.execute('UPDATE helpers SET revoked=1 WHERE id=? AND user_id=?', (hid, uid)).rowcount > 0
+
+    def save_job(self, uid, job):
+        body = {k: job.get(k) for k in ('id', 'title', 'when', 'platforms', 'dry', 'steps', 'accounts', 'created', 'started', 'finished',
+                                        'current_platform', 'thumbnail_url', 'vid', 'helper_claim')}
+        with self.connect() as db:
+            db.execute('INSERT OR REPLACE INTO job_history VALUES (?,?,?,?)', (uid, job['id'], json.dumps(body, default=str), time.time()))
+
+    def load_jobs(self, uid):
+        with self.connect() as db:
+            rows = db.execute('SELECT body FROM job_history WHERE user_id=? ORDER BY updated DESC LIMIT 200', (uid,)).fetchall()
+        return [json.loads(r['body']) for r in rows]
+
     def allow_attempt(self, key):
         now = time.time()
         with self.connect() as db:
@@ -89,9 +156,20 @@ def password_hash(password, salt):
     return hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1).hex()
 
 
+def helper_accounts(store, uid):
+    helpers = store.helpers(uid)
+    newest = max(helpers, key=lambda h: h['last_seen'] or 0, default=None)
+    online = bool(newest and newest['last_seen'] and time.time() - newest['last_seen'] < HELPER_ONLINE_SECONDS)
+    sessions = json.loads(newest['sessions']) if newest else {}
+    return {'chrome': online, 'youtube': bool(online and sessions.get('youtube')), 'meta': bool(online and sessions.get('meta')),
+            'tiktok': bool(online and sessions.get('tiktok')), 'helper_mode': True,
+            'helper': {'paired': bool(helpers), 'online': online, 'name': newest['name'] if newest else None}}
+
+
 class Workspace:
     """Private engine namespace: no shared jobs, bot globals, profiles or media mounts."""
-    def __init__(self, root, uid, capacity):
+    def __init__(self, root, uid, capacity, store=None):
+        self.uid, self.store = uid, store
         self.root = root / 'users' / uid
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.engine = load_module('engine_' + uid, HERE / 'engine.py')
@@ -110,6 +188,15 @@ class Workspace:
                 self.posting.clear()
                 self.worker.touch()
         engine.run_job = posting_job
+        if HELPER_MODE and store:
+            def queue_for_helper(job):
+                job['helper_claim'] = None
+                store.save_job(uid, job)
+            engine.run_job = queue_for_helper
+            for body in reversed(store.load_jobs(uid)):
+                body.setdefault('created', time.time())
+                body.setdefault('vid', {})
+                engine.jobs[body['id']] = body
         def ready(port):
             engine.bot.PORT = port
             engine.CDP = f'http://127.0.0.1:{port}'
@@ -140,7 +227,7 @@ class TenantRouter:
     def workspace(self, uid):
         with self.lock:
             if uid not in self.workspaces:
-                self.workspaces[uid] = Workspace(self.store.root, uid, self.capacity)
+                self.workspaces[uid] = Workspace(self.store.root, uid, self.capacity, self.store)
             return self.workspaces[uid]
 
     def local_manual_allowed(self, conn):
@@ -176,6 +263,20 @@ class TenantRouter:
             response = (FileResponse(HERE / 'static' / 'index.html') if scope['path'] == '/' and scope['method'] == 'GET'
                         else JSONResponse({'error': 'Please sign in.'}, status_code=401))
             await response(scope, receive, send)
+            return
+        if HELPER_MODE:
+            path = scope['path']
+            if path == '/api/start':
+                await JSONResponse({'ok': True})(scope, receive, send)
+                return
+            if path == '/api/accounts':
+                await JSONResponse(helper_accounts(self.store, user['id']))(scope, receive, send)
+                return
+            if path == '/api/schedule' and not helper_accounts(self.store, user['id'])['helper']['online']:
+                await JSONResponse({'error': 'Your helper is offline. Open the Shorts Everywhere helper on your computer, then try again.'},
+                                   status_code=409)(scope, receive, send)
+                return
+            await self.workspace(user['id']).engine.app(scope, receive, send)
             return
         if not self.enabled and scope['path'] in ('/api/start', '/api/schedule'):
             await JSONResponse({'error': 'Hosted platform connections are not configured yet. '
@@ -271,7 +372,8 @@ def create_app(data_dir=None, secure_cookie=None):
 
     @app.middleware('http')
     async def protect(request, call_next):
-        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+        agent = request.url.path.startswith('/api/helper-agent/') or request.url.path == '/api/helper/pair'
+        if request.method not in ('GET', 'HEAD', 'OPTIONS') and not agent:
             origin = request.headers.get('origin')
             expected = os.environ.get('SHORTS_PUBLIC_ORIGIN') or str(request.base_url).rstrip('/')
             if origin != expected or request.headers.get('x-shorts-request') != '1':
@@ -342,6 +444,139 @@ def create_app(data_dir=None, secure_cookie=None):
         response = JSONResponse({'id': uid, 'email': email})
         response.set_cookie(COOKIE, token, max_age=TTL, httponly=True, secure=secure, samesite='strict', path='/')
         return response
+
+
+    def session_user(request):
+        return store.user(request.cookies.get(COOKIE))
+
+    @app.post('/api/helper/pair-code')
+    def helper_pair_code(request: Request):
+        user = session_user(request)
+        if not user:
+            return JSONResponse({'error': 'Please sign in.'}, status_code=401)
+        return {'code': store.create_pair_code(user['id']), 'expires_in': 600}
+
+    @app.get('/api/helper/list')
+    def helper_list(request: Request):
+        user = session_user(request)
+        if not user:
+            return JSONResponse({'error': 'Please sign in.'}, status_code=401)
+        return [{'id': h['id'], 'name': h['name'], 'last_seen': h['last_seen']} for h in store.helpers(user['id'])]
+
+    @app.post('/api/helper/revoke/{hid}')
+    def helper_revoke(hid: str, request: Request):
+        user = session_user(request)
+        if not user:
+            return JSONResponse({'error': 'Please sign in.'}, status_code=401)
+        return {'ok': store.revoke_helper(user['id'], hid)}
+
+    @app.post('/api/helper/pair')
+    async def helper_pair(request: Request):
+        ip = request.client.host if request.client else 'unknown'
+        if not store.allow_attempt('pair:' + ip):
+            return JSONResponse({'error': 'Too many attempts. Try again in 15 minutes.'}, status_code=429)
+        try:
+            data = await request.json()
+            code, name = str(data['code']), str(data.get('name', 'My computer'))
+        except (ValueError, KeyError, TypeError):
+            return JSONResponse({'error': 'Send the pairing code.'}, status_code=400)
+        token = store.redeem_pair_code(code, name)
+        if not token:
+            return JSONResponse({'error': 'That code is wrong or has expired. Get a new one from the website.'}, status_code=400)
+        return {'token': token}
+
+    def agent(request: Request):
+        header = request.headers.get('authorization', '')
+        helper = store.helper_for_token(header[7:] if header.lower().startswith('bearer ') else '')
+        return helper
+
+    def job_payload(job):
+        vid = job['vid']
+        keep = ('title', 'description', 'schedule', 'publish_now', 'made_for_kids', 'story', 'thumb_title',
+                'youtube_channel', 'instagram_account', 'facebook_account')
+        return {'id': job['id'], 'dry': job['dry'], 'platforms': [p for p in job['platforms']
+                if not (job['steps'][p]['state'] == 'done' or job['steps'][p]['state'].startswith('checked'))],
+                'vid': {k: vid.get(k) for k in keep}, 'has_thumbnail': bool(vid.get('thumbnail'))}
+
+    @app.post('/api/helper-agent/poll')
+    async def agent_poll(request: Request):
+        helper = agent(request)
+        if not helper:
+            return JSONResponse({'error': 'Helper not recognised. Pair it again.'}, status_code=401)
+        try:
+            sessions = (await request.json()).get('sessions')
+        except ValueError:
+            sessions = None
+        clean = {k: bool(sessions.get(k)) for k in ('chrome', 'youtube', 'meta', 'tiktok')} if isinstance(sessions, dict) else None
+        store.touch_helper(helper['id'], clean)
+        engine = tenants.workspace(helper['user_id']).engine
+        now = time.time()
+        for job in sorted(engine.jobs.values(), key=lambda j: j.get('created') or 0):
+            claim = job.get('helper_claim')
+            if job.get('finished') or (claim and now - claim['t'] < CLAIM_STALE_SECONDS):
+                continue
+            if not job_payload(job)['platforms']:
+                continue
+            job['helper_claim'] = {'id': helper['id'], 't': now}
+            store.save_job(helper['user_id'], job)
+            return {'job': job_payload(job)}
+        return {'job': None}
+
+    def claimed_job(request, jid):
+        helper = agent(request)
+        if not helper:
+            return None, None, JSONResponse({'error': 'Helper not recognised. Pair it again.'}, status_code=401)
+        job = tenants.workspace(helper['user_id']).engine.jobs.get(jid)
+        claim = job.get('helper_claim') if job else None
+        if not job or not claim or claim['id'] != helper['id']:
+            return None, None, JSONResponse({'error': 'This job is not assigned to your helper.'}, status_code=404)
+        return helper, job, None
+
+    @app.get('/api/helper-agent/jobs/{jid}/video')
+    def agent_video(jid: str, request: Request):
+        helper, job, err = claimed_job(request, jid)
+        return err or FileResponse(job['vid']['file'], media_type='video/mp4')
+
+    @app.get('/api/helper-agent/jobs/{jid}/thumbnail')
+    def agent_thumbnail(jid: str, request: Request):
+        helper, job, err = claimed_job(request, jid)
+        if err:
+            return err
+        path = job['vid'].get('thumbnail')
+        return FileResponse(path) if path and os.path.exists(path) else JSONResponse({'error': 'No thumbnail.'}, status_code=404)
+
+    @app.post('/api/helper-agent/jobs/{jid}/sync')
+    async def agent_sync(jid: str, request: Request):
+        helper, job, err = claimed_job(request, jid)
+        if err:
+            return err
+        try:
+            data = await request.json()
+        except ValueError:
+            return JSONResponse({'error': 'Bad request.'}, status_code=400)
+        allowed = {'queued', 'running', 'done', 'failed', 'checked (dry run)'}
+        for plat, step in (data.get('steps') or {}).items():
+            if plat not in job['steps'] or not isinstance(step, dict) or step.get('state') not in allowed:
+                continue
+            target = job['steps'][plat]
+            target['state'] = step['state']
+            target['error'] = str(step['error'])[:400] if step.get('error') else None
+            target['detail'] = str(step.get('detail', ''))[:300]
+            target['attempt'] = int(step.get('attempt') or 0)
+            target['log'] = [{'t': float(e.get('t', now_ts())), 'msg': str(e.get('msg', ''))[:500]}
+                             for e in (step.get('log') or [])[-300:] if isinstance(e, dict)]
+        cur = data.get('current_platform')
+        job['current_platform'] = cur if cur in job['steps'] else None
+        job['started'] = job.get('started') or time.time()
+        if isinstance(data.get('accounts'), dict):
+            job['accounts'].update({str(k)[:20]: str(v)[:120] for k, v in data['accounts'].items()})
+        job['finished'] = time.time() if data.get('finished') else None
+        job['helper_claim']['t'] = time.time()
+        store.save_job(helper['user_id'], job)
+        return {'ok': True}
+
+    def now_ts():
+        return time.time()
 
     app.mount('/static', StaticFiles(directory=HERE / 'static'))
     app.mount('/', tenants)
