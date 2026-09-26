@@ -97,6 +97,21 @@ class HelperProtocolTests(unittest.TestCase):
         c.post('/api/helper-agent/jobs/j1/sync', headers=auth, json={'steps': {'youtube': {'state': 'hacked'}}})
         self.assertEqual(job['steps']['youtube']['state'], 'queued')
 
+    def test_cancel_reaches_a_claimed_job_through_the_next_sync(self):
+        auth = self.pair(); job = self.add_job(self.uid); c = TestClient(self.app)
+        c.post('/api/helper-agent/poll', headers=auth, json={})
+        r = self.user.post('/api/jobs/j1/cancel', headers=self.h)
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNone(job['finished'])  # claimed: the helper must stop it, the server does not pretend it is done
+        reply = c.post('/api/helper-agent/jobs/j1/sync', headers=auth, json={'steps': {'youtube': {'state': 'running'}}}).json()
+        self.assertTrue(reply['cancel'])
+
+    def test_cancel_of_unclaimed_job_finishes_it_and_helper_never_gets_it(self):
+        auth = self.pair(); job = self.add_job(self.uid); c = TestClient(self.app)
+        self.assertEqual(self.user.post('/api/jobs/j1/cancel', headers=self.h).status_code, 200)
+        self.assertIsNotNone(job['finished'])
+        self.assertIsNone(c.post('/api/helper-agent/poll', headers=auth, json={}).json()['job'])
+
     def test_revoked_helper_is_locked_out(self):
         auth = self.pair()
         hid = self.user.get('/api/helper/list').json()[0]['id']

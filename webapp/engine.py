@@ -125,6 +125,29 @@ def friendly_error(exc):
 
 
 # ---------- jobs ----------
+class Cancelled(BaseException):
+    """Raised from the step callback so a user cancel unwinds the browser flow (BaseException: bot code's `except Exception` can't swallow it)."""
+
+
+def _close_active_tab():
+    try:
+        target = bot.ACTIVE_TARGET_ID
+        if not target or not bot.chrome_running():
+            return
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(CDP, no_defaults=True)
+            for ctx in browser.contexts:
+                for pg in ctx.pages:
+                    try:
+                        session = ctx.new_cdp_session(pg)
+                        if session.send("Target.getTargetInfo")["targetInfo"]["targetId"] == target:
+                            pg.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+    except Exception:  # noqa: BLE001
+        pass
+
+
 MAX_RETRIES = 3
 RETRY_WAITS = (5, 15, 30)
 PLATFORM_HOST = {"youtube": "studio.youtube.com", "instagram": "business.facebook.com", "facebook": "business.facebook.com", "tiktok": "tiktok.com"}
@@ -132,6 +155,8 @@ PLATFORM_HOST = {"youtube": "studio.youtube.com", "instagram": "business.faceboo
 
 def run_job(job):
     vid = job["vid"]
+    if job.get("cancel") and job.get("finished"):
+        return  # cancelled while still waiting in the queue
     if not bot.chrome_running():
         for step in job["steps"].values():
             step["state"], step["error"] = "failed", "The browser isn't running, so nothing was posted. Open it (python3 bot.py login) and try again."
@@ -143,10 +168,15 @@ def run_job(job):
         step = job["steps"][plat]
         if step["state"] == "done" or step["state"].startswith("checked"):
             continue  # already posted; a retry only redoes what failed
+        if job.get("cancel"):
+            step["state"], step["error"] = "failed", "Cancelled"
+            continue
         step["log"] = []
         job["current_platform"] = plat
 
         def on_step(msg, step=step):
+            if job.get("cancel"):
+                raise Cancelled()
             step["detail"] = msg
             step["log"].append({"t": time.time(), "msg": msg})
 
@@ -173,10 +203,17 @@ def run_job(job):
                     bot.tiktok(pvid, commit=commit, on_step=on_step)
                 step["state"] = "done" if commit else "checked (dry run)"
                 break
+            except Cancelled:
+                step["state"], step["error"] = "failed", "Cancelled"
+                _close_active_tab()
+                break
             except SystemExit as e:
                 step["state"], step["error"] = "failed", str(e)
             except Exception as e:  # noqa: BLE001
                 step["state"], step["error"] = "failed", friendly_error(e)
+            if job.get("cancel"):
+                step["state"], step["error"] = "failed", "Cancelled"
+                break
             if attempt <= MAX_RETRIES:
                 wait = RETRY_WAITS[min(attempt - 1, len(RETRY_WAITS) - 1)]
                 on_step(f"Attempt {attempt} failed ({step['error']}). Retrying in {wait}s (retry {attempt} of {MAX_RETRIES})...")
@@ -301,6 +338,7 @@ def retry_job(jid: str):
         return JSONResponse({"error": "The scheduled time has passed or is too close. Submit the video again with a new time."}, status_code=400)
     for p in failed:
         job["steps"][p] = {"state": "queued", "log": []}
+    job["cancel"] = False
     job["finished"] = None
     job["current_platform"] = None
     executor.submit(run_job, job)
@@ -377,12 +415,28 @@ def video_status(vid: str):
     return {k: vj[k] for k in ("id", "state", "step", "error", "file_url", "report")}
 
 
+@app.post("/api/jobs/{jid}/cancel")
+def cancel_job(jid: str):
+    job = jobs.get(jid)
+    if not job:
+        return JSONResponse({"error": "Job not found."}, status_code=404)
+    if job.get("finished"):
+        return JSONResponse({"error": "This job has already finished."}, status_code=409)
+    job["cancel"] = True
+    if not job.get("started") and not job.get("helper_claim"):
+        for step in job["steps"].values():
+            if step["state"] == "queued":
+                step["state"], step["error"] = "failed", "Cancelled"
+        job["finished"] = time.time()
+    return {"id": jid, "cancelling": True}
+
+
 @app.get("/api/jobs")
 def list_jobs():
     out = []
     keys = ("id", "title", "when", "platforms", "dry", "steps", "started", "finished", "current_platform", "thumbnail_url", "accounts")
     for j in sorted(jobs.values(), key=lambda x: -x["created"]):
-        out.append({k: j[k] for k in keys})
+        out.append({**{k: j[k] for k in keys}, "cancel": bool(j.get("cancel"))})
     return out
 
 

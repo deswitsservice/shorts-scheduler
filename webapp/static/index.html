@@ -666,23 +666,27 @@
   #newPostBtn:hover { background:rgba(120,90,255,.32); }
   main.live-focus #newPostBtn { display:inline-flex; }
   @media (min-width:1000px) {
-    body:has(main.live-focus) header { min-height:0 !important; padding:10px 30px !important; }
+    body:has(main.live-focus) header { min-height:0 !important; padding:6px 30px !important; }
+    body:has(main.live-focus) header .logo { transform:scale(.8); }
     body:has(main.live-focus) header .tag { display:none; }
-    main.live-focus #newPostBtn, main.live-focus .live-head .card-head h2 { white-space:nowrap; }
-    main.live-focus { padding-top:10px !important; }
-    main.live-focus > section.card { display:grid; grid-template-columns:minmax(330px,.8fr) minmax(0,1.6fr); grid-auto-rows:min-content; column-gap:20px; align-content:start; margin-top:0; padding:14px 18px; }
-    main.live-focus > section.card > * { grid-column:1; min-width:0; }
-    main.live-focus > section.card > .browser-frame { grid-column:2; grid-row:1 / span 12; align-self:start; }
-    main.live-focus .live-head { flex-wrap:nowrap; gap:8px; align-items:center; }
-    main.live-focus .live-head .card-head .ic { display:none; }
+    main.live-focus { padding-top:6px !important; }
+    main.live-focus > section.card { display:flex; flex-direction:column; margin-top:0; padding:8px 18px 12px; }
+    main.live-focus > section.card > * { min-width:0; }
+    main.live-focus .live-head { order:1; flex-wrap:nowrap; gap:8px; align-items:center; }
+    main.live-focus .live-head .card-head p, main.live-focus .live-head .card-head .ic { display:none; }
     main.live-focus #newPostBtn, main.live-focus #statusPill { flex:none; }
-    main.live-focus #newPostBtn { padding:6px 12px; }
-    main.live-focus .live-head .card-head p, main.live-focus #platTabs, main.live-focus #jobHistoryHint, main.live-focus label[for=jobSelect], main.live-focus #jobSelect { display:none; }
-    main.live-focus .canvas-wrap { width:min(100%, calc((100vh - 195px) * 16 / 9)); margin:0 auto; }
-    main.live-focus .steps-log-grid { grid-template-columns:minmax(0,1fr) !important; }
-    main.live-focus:has(#jobResults:not([hidden])) .steps-list { max-height:80px; }
-    main.live-focus .steps-list { max-height:calc(100vh - 430px); min-height:60px; overflow:auto; }
-    main.live-focus .journey { margin-top:6px; }
+    main.live-focus #newPostBtn { padding:6px 12px; white-space:nowrap; }
+    main.live-focus #platTabs, main.live-focus #jobHistoryHint, main.live-focus label[for=jobSelect], main.live-focus #jobSelect { display:none; }
+    main.live-focus .journey { order:2; margin-top:4px; padding:46px 10px 6px; }
+    main.live-focus .journey .jsay { margin-top:8px; }
+    main.live-focus .journey .jn .orb { width:40px; height:40px; }
+    main.live-focus .journey .jline { top:20px; }
+    main.live-focus .browser-frame { order:3; margin-top:6px; }
+    main.live-focus .canvas-wrap { width:min(100%, calc((100vh - 318px) * 16 / 9)); margin:0 auto; }
+    main.live-focus #jobResults { order:4; margin-top:10px; }
+    main.live-focus .steps-log-grid { order:5; grid-template-columns:minmax(0,1fr) !important; margin-top:10px; }
+    main.live-focus .steps-list { max-height:240px; overflow:auto; }
+    main.live-focus > section.card > .summary-bar, main.live-focus #summaryBar { order:6; }
   }
   .retry-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink2,#5b5473); }
   .retry-btn { padding:8px 16px; border-radius:10px; border:0; cursor:pointer; font:inherit; font-weight:700; color:#fff; background:linear-gradient(135deg,#5a3ae0,#9d34bd); box-shadow:0 6px 16px -8px rgba(109,77,255,.8); }
@@ -699,6 +703,11 @@
   .status-pill.helper-on .dot { background:#1f9a55 !important; animation:none; }
   html[data-theme="dark"] .status-pill.helper-on { color:#7ff0ae !important; }
   #helperPairBtn { color:#fff !important; background:linear-gradient(135deg,#5a3ae0,#9d34bd) !important; border:0 !important; }
+  #cancelBtn { padding:8px 16px; border-radius:20px; border:1.5px solid rgba(229,72,77,.6); background:rgba(229,72,77,.12); color:#b4232a; font:inherit; font-weight:700; cursor:pointer; }
+  html[data-theme="dark"] #cancelBtn { color:#ff9aa2; border-color:rgba(255,120,130,.55); background:rgba(255,90,100,.14); }
+  #cancelBtn:hover:not(:disabled) { background:rgba(229,72,77,.24); }
+  #cancelBtn:disabled { opacity:.6; cursor:default; }
+  #cancelBtn[hidden] { display:none !important; }
 </style>
 </head>
 <body>
@@ -877,6 +886,7 @@
         <div><h2>Live Automation</h2><p>Watch the automation work, one platform at a time — view only.</p></div>
       </div>
       <button type="button" class="pill-btn" id="newPostBtn">＋ New post</button>
+      <button type="button" id="cancelBtn" hidden>Cancel upload</button>
       <div class="status-pill idle" id="statusPill"><span class="dot"></span><span id="statusText">Idle</span></div>
     </div>
 
@@ -994,6 +1004,9 @@ const PLAT_BADGE = {
   facebook: { bg: 'var(--fb)', ic: 'f' },
   tiktok: { bg: 'var(--tt)', ic: '♪' },
 };
+const isCancelled = j => !!j && Object.values(j.steps).some(s => s.error === 'Cancelled');
+const isScheduled = j => !!j && j.when && j.when !== 'Now' && !j.dry;
+const whenLabel = j => { const d = new Date(String(j.when).replace(' ', 'T')); return isNaN(d) ? j.when : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
 const PLAT_NAME = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
 
 document.addEventListener('click', async e => {
@@ -1283,6 +1296,13 @@ document.getElementById('form').addEventListener('submit', async e => {
   btn.disabled = false;
 });
 
+document.getElementById('cancelBtn').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  if (!confirm('Cancel this upload? Anything already posted or scheduled stays; the rest is stopped. A half-uploaded draft may be left on the platform.')) return;
+  btn.disabled = true; btn.textContent = 'Cancelling\u2026';
+  try { const r = await fetch(`/api/jobs/${btn.dataset.job}/cancel`, { method: 'POST' }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not cancel.'); refreshJobs(); }
+  catch (err) { btn.disabled = false; btn.textContent = 'Cancel upload'; alert(err.message); }
+});
 document.getElementById('newPostBtn').addEventListener('click', () => { focusJobId = null; document.querySelector('main').classList.remove('live-focus'); window.scrollTo({ top: 0 }); });
 
 
@@ -1390,7 +1410,7 @@ async function refreshJobs() {
   const selected = jobSelect.value;
   jobSelect.replaceChildren(new Option('Follow current job', ''));
   for (const j of js) {
-    const state = j.finished ? (Object.values(j.steps).some(s => s.state === 'failed') ? 'Failed' : j.dry ? 'Preview complete' : 'Complete') : j.current_platform ? 'Running' : 'Queued';
+    const state = j.finished ? (Object.values(j.steps).some(s => s.state === 'failed') ? 'Failed' : j.dry ? 'Preview complete' : isScheduled(j) ? 'Scheduled' : 'Complete') : j.current_platform ? (isScheduled(j) ? 'Uploading' : 'Running') : 'Queued';
     jobSelect.add(new Option(`${j.title} — ${state} — ${j.when}`, j.id));
   }
   jobSelect.value = js.some(j => j.id === selected) ? selected : '';
@@ -1416,7 +1436,10 @@ async function refreshJobs() {
   const pill = document.getElementById('statusPill'), stxt = document.getElementById('statusText');
   const running = job.current_platform && !job.finished;
   pill.className = 'status-pill ' + (running ? 'running' : 'idle');
-  stxt.textContent = running ? `Running… ${elapsed(job.started)}` : (job.finished ? (failed ? 'Failed' : (job.dry ? 'Preview complete' : 'Complete')) : 'Queued');
+  stxt.textContent = running ? (job.cancel ? 'Cancelling…' : `${isScheduled(job) ? 'Uploading' : 'Running'}… ${elapsed(job.started)}`) : (job.finished ? (isCancelled(job) ? 'Cancelled' : failed ? 'Failed' : (job.dry ? 'Preview complete' : isScheduled(job) ? 'Scheduled' : 'Complete')) : 'Queued');
+
+  const cb = document.getElementById('cancelBtn');
+  cb.hidden = !!job.finished; cb.disabled = !!job.cancel; cb.dataset.job = job.id; cb.textContent = job.cancel ? 'Cancelling…' : 'Cancel upload';
 
   // per-platform tabs
   document.querySelectorAll('.plat-tab').forEach(tab => {
@@ -1487,12 +1510,13 @@ function renderResults(job) {
   const okStates = st => st === 'done' || st.startsWith('checked');
   const good = job.platforms.filter(p => okStates(job.steps[p].state)).length, total = job.platforms.length;
   const allOk = good === total;
-  const head = allOk ? (job.dry ? `✅ Preview complete — all ${total} platforms checked` : `🎉 All done — ${total} of ${total} succeeded`)
-                     : `⚠️ ${good} of ${total} succeeded — ${total - good} need attention`;
+  const cancelled = isCancelled(job);
+  const head = cancelled ? `🛑 Upload cancelled — ${good} of ${total} had already ${isScheduled(job) ? 'been scheduled' : 'posted'}` : allOk ? (job.dry ? `✅ Preview complete — all ${total} platforms checked` : (isScheduled(job) ? `🗓️ All set — scheduled on ${total} platforms for ${whenLabel(job)}` : `🎉 All done — ${total} of ${total} succeeded`))
+                     : `⚠️ ${good} of ${total} ${isScheduled(job) ? 'scheduled' : 'succeeded'} — ${total - good} need attention`;
   box.innerHTML = `<div class="headline">${head}</div>` + job.platforms.map((p, i) => {
     const st = job.steps[p], ok = okStates(st.state);
-    const word = ok ? (st.state.startsWith('checked') ? 'Checked' : 'Succeeded') : 'Failed';
-    const why = !ok && st.error ? `<span class="why">${String(st.error).replace(/</g, '&lt;').slice(0, 160)}</span>` : '';
+    const word = ok ? (st.state.startsWith('checked') ? 'Checked' : isScheduled(job) ? 'Scheduled' : 'Succeeded') : (st.error === 'Cancelled' ? 'Cancelled' : 'Failed');
+    const why = !ok && st.error && st.error !== 'Cancelled' ? `<span class="why">${String(st.error).replace(/</g, '&lt;').slice(0, 160)}</span>` : '';
     return `<div class="res ${ok ? 'ok' : 'bad'}" style="animation-delay:${0.15 + i * 0.18}s">
       <span class="rbadge" style="background:${PLAT_BADGE[p].bg}">${PLAT_BADGE[p].ic}</span>
       <b>${PLAT_NAME[p]}</b><span class="rstate"><span class="rmark" style="animation-delay:${0.35 + i * 0.18}s">${ok ? '✓' : '✕'}</span><span>${word}${why}</span></span></div>`;
@@ -1527,7 +1551,7 @@ function renderJourney(job) {
     const cls = st.state === 'running' ? 'running' : (st.state === 'done' || String(st.state).startsWith('checked')) ? 'done' : st.state === 'failed' ? 'failed' : 'queued';
     if (!node.classList.contains(cls)) { node.classList.remove('queued', 'running', 'done', 'failed'); node.classList.add(cls); }
     const mark = node.querySelector('.mark'); mark.textContent = cls === 'failed' ? '✕' : '✓';
-    node.querySelector('small').textContent = { queued: 'waiting', running: 'posting…', done: String(st.state).startsWith('checked') ? 'checked' : 'succeeded', failed: 'failed' }[cls];
+    node.querySelector('small').textContent = { queued: 'waiting', running: isScheduled(job) ? 'uploading…' : 'posting…', done: String(st.state).startsWith('checked') ? 'checked' : isScheduled(job) ? 'scheduled' : 'succeeded', failed: 'failed' }[cls];
   });
   // clip position + progress line (nodes sit at the centre of equal columns)
   const doneCount = plats.filter(p => ['done', 'failed'].includes(job.steps[p].state) || String(job.steps[p].state).startsWith('checked')).length;
@@ -1540,8 +1564,8 @@ function renderJourney(job) {
   box.classList.toggle('finished', !!job.finished);
   const failed = plats.filter(p => job.steps[p].state === 'failed').length;
   const cur = job.current_platform;
-  const say = job.finished ? (failed ? `⚠️ ${plats.length - failed} of ${plats.length} posted — ${failed} need attention` : (job.dry ? '✅ Preview finished — nothing was posted' : `🎉 Posted to all ${plats.length} platforms!`))
-                : cur ? `📤 Sending your video to ${PLAT_NAME[cur]}…` : '⏳ Getting ready…';
+  const say = job.finished && isCancelled(job) ? '🛑 Upload cancelled' : job.finished ? (failed ? `⚠️ ${plats.length - failed} of ${plats.length} ${isScheduled(job) ? 'scheduled' : 'posted'} — ${failed} need attention` : (job.dry ? '✅ Preview finished — nothing was posted' : isScheduled(job) ? `🗓️ Scheduled on all ${plats.length} platforms — goes live ${whenLabel(job)}` : `🎉 Posted to all ${plats.length} platforms!`))
+                : cur ? (isScheduled(job) ? `📤 Uploading to ${PLAT_NAME[cur]} — it goes live ${whenLabel(job)}, not now` : `📤 Sending your video to ${PLAT_NAME[cur]}…`) : '⏳ Getting ready…';
   const el = document.getElementById('jsay');
   if (say !== lastSay) { lastSay = say; el.textContent = say; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
 }

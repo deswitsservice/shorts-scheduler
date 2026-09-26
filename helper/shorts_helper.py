@@ -109,7 +109,9 @@ def sync(cfg, jid, job, finished):
     body["finished"] = finished
     for attempt in range(5 if finished else 1):
         try:
-            request(cfg, "POST", f"/api/helper-agent/jobs/{jid}/sync", body)
+            reply = request(cfg, "POST", f"/api/helper-agent/jobs/{jid}/sync", body)
+            if reply.get("cancel"):
+                job["cancel"] = True
             return
         except ServerError as exc:
             print("sync failed:", exc)
