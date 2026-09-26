@@ -101,6 +101,44 @@ class RetryTests(unittest.TestCase):
         self.assertIsNone(self.job["finished"])
         self.submit.assert_called_once()
 
+    def test_cancel_before_start_finishes_job_and_skips_posting(self):
+        self.job["started"] = None; self.job["finished"] = None
+        self.job["steps"] = {p: {"state": "queued", "log": []} for p in ("youtube", "tiktok")}
+        r = self.client.post("/api/jobs/r1/cancel")
+        self.assertEqual(r.status_code, 200)
+        self.assertIsNotNone(self.job["finished"])
+        self.assertTrue(all(s["state"] == "failed" and s["error"] == "Cancelled" for s in self.job["steps"].values()))
+        with patch.object(server.bot, "chrome_running", return_value=True), patch.object(server.bot, "youtube") as yt, patch.object(server.bot, "show_idle_screen"):
+            server.run_job(self.job)
+        yt.assert_not_called()
+
+    def test_cancel_stops_a_running_flow_at_the_next_step_without_retrying(self):
+        self.job["finished"] = None; self.job["started"] = None
+        self.job["steps"] = {p: {"state": "queued", "log": []} for p in ("youtube", "tiktok")}
+        self.job["platforms"] = ["youtube", "tiktok"]
+        calls = []
+
+        def flow(vid, commit, on_step):
+            calls.append(1)
+            on_step("uploading")
+            self.job["cancel"] = True  # user clicks cancel mid-upload
+            on_step("still uploading")  # next step boundary raises
+            calls.append("unreachable")
+
+        with patch.object(server.bot, "chrome_running", return_value=False), patch.object(server.bot, "youtube", side_effect=flow), \
+                patch.object(server.bot, "tiktok") as tt, patch.object(server.bot, "show_idle_screen"), patch.object(server, "_close_active_tab") as close:
+            with patch.object(server.bot, "chrome_running", return_value=True):
+                server.run_job(self.job)
+        self.assertEqual(calls, [1])
+        tt.assert_not_called()
+        self.assertEqual(self.job["steps"]["youtube"]["error"], "Cancelled")
+        self.assertEqual(self.job["steps"]["tiktok"]["error"], "Cancelled")
+        close.assert_called_once()
+        self.assertIsNotNone(self.job["finished"])
+
+    def test_cancel_rejected_for_finished_job(self):
+        self.assertEqual(self.client.post("/api/jobs/r1/cancel").status_code, 409)
+
     def test_retry_rejected_when_running_or_nothing_failed(self):
         self.job["finished"] = None
         self.assertEqual(self.client.post("/api/jobs/r1/retry").status_code, 409)

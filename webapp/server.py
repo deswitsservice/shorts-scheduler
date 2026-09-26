@@ -130,7 +130,7 @@ class Store:
 
     def save_job(self, uid, job):
         body = {k: job.get(k) for k in ('id', 'title', 'when', 'platforms', 'dry', 'steps', 'accounts', 'created', 'started', 'finished',
-                                        'current_platform', 'thumbnail_url', 'vid', 'helper_claim')}
+                                        'current_platform', 'thumbnail_url', 'vid', 'helper_claim', 'cancel')}
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO job_history VALUES (?,?,?,?)', (uid, job['id'], json.dumps(body, default=str), time.time()))
 
@@ -573,7 +573,7 @@ def create_app(data_dir=None, secure_cookie=None):
         job['finished'] = time.time() if data.get('finished') else None
         job['helper_claim']['t'] = time.time()
         store.save_job(helper['user_id'], job)
-        return {'ok': True}
+        return {'ok': True, 'cancel': bool(job.get('cancel'))}
 
     def now_ts():
         return time.time()
