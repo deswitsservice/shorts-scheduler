@@ -72,7 +72,7 @@ def start_chrome(urls=(), background=True):
             command += ["-g", "-j"]
         command += ["-a", "/Applications/Google Chrome.app", "--args",
                     f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
-                    "--no-first-run", "--no-default-browser-check", "--window-size=1280,900"]
+                    "--no-first-run", "--no-default-browser-check", "--window-size=" + os.environ.get("SHORTS_WINDOW_SIZE", "1800x900").lower().replace("x", ",")]
         if background:
             command.append("--window-position=-2400,-2400")
         command.extend(urls)
