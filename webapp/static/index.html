@@ -675,6 +675,9 @@
     main.live-focus .live-head { order:1; flex-wrap:nowrap; gap:8px; align-items:center; }
     main.live-focus .live-head .card-head p, main.live-focus .live-head .card-head .ic { display:none; }
     main.live-focus #newPostBtn, main.live-focus #statusPill { flex:none; }
+    main.live-focus #newPostBtn { margin-left:auto; }
+    main.live-focus .journey.finished ~ .browser-frame { display:none; }
+    main.live-focus #jobResults { order:3; }
     main.live-focus #newPostBtn { padding:6px 12px; white-space:nowrap; }
     main.live-focus #platTabs, main.live-focus #jobHistoryHint, main.live-focus label[for=jobSelect], main.live-focus #jobSelect { display:none; }
     main.live-focus .journey { order:2; margin-top:4px; padding:46px 10px 6px; }
@@ -682,8 +685,8 @@
     main.live-focus .journey .jn .orb { width:40px; height:40px; }
     main.live-focus .journey .jline { top:20px; }
     main.live-focus .browser-frame { order:3; margin-top:6px; }
-    main.live-focus .canvas-wrap { width:min(100%, calc((100vh - 318px) * 16 / 9)); margin:0 auto; }
-    main.live-focus #jobResults { order:4; margin-top:10px; }
+    main.live-focus .canvas-wrap { width:100%; aspect-ratio:auto; height:calc(100vh - 318px); min-height:260px; background:#05040c; }
+    main.live-focus #jobResults { margin-top:8px; }
     main.live-focus .steps-log-grid { order:5; grid-template-columns:minmax(0,1fr) !important; margin-top:10px; }
     main.live-focus .steps-list { max-height:240px; overflow:auto; }
     main.live-focus > section.card > .summary-bar, main.live-focus #summaryBar { order:6; }
