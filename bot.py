@@ -112,13 +112,19 @@ def show_idle_screen(url="https://www.youtube.com"):
 def resolve_channel(pg):
     """The channel-less root redirects to whichever channel is signed in -- no hardcoded ID needed,
     so this works for any user's account, not just one specific channel. The redirect timing varies
-    (client-side JS resolves sign-in state), so poll for it rather than guessing a fixed delay."""
-    pg.goto("https://studio.youtube.com/", wait_until="domcontentloaded", timeout=20000)
-    for _ in range(20):
-        m = re.search(r"/channel/(UC[\w-]+)", pg.url)
-        if m:
-            return m.group(1)
-        pg.wait_for_timeout(500)
+    (client-side JS resolves sign-in state; a freshly started Chrome can take well over 10s), so poll
+    for it, reload once if it never happens, and say so plainly when the account is signed out."""
+    pg.goto("https://studio.youtube.com/", wait_until="domcontentloaded", timeout=30000)
+    for attempt in range(2):
+        for _ in range(40):
+            m = re.search(r"/channel/(UC[\w-]+)", pg.url)
+            if m:
+                return m.group(1)
+            if "accounts.google.com" in pg.url:
+                sys.exit("YouTube is signed out in the posting browser. Sign in to YouTube again, then retry.")
+            pg.wait_for_timeout(500)
+        if attempt == 0:
+            pg.reload(wait_until="domcontentloaded", timeout=30000)
     sys.exit(f"Could not resolve a YouTube channel from the signed-in account (landed on {pg.url!r}).")
 
 
