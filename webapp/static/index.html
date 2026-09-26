@@ -692,9 +692,11 @@
     main.live-focus .browser-frame { position:relative; border-radius:14px; overflow:hidden; }
     main.live-focus .browser-titlebar { position:absolute; top:8px; left:8px; z-index:4; height:auto; padding:3px 10px; border-radius:8px; background:rgba(8,6,20,.6); backdrop-filter:blur(6px); }
     main.live-focus .browser-titlebar .tl { display:none; }
-    main.live-focus .canvas-wrap { width:100%; aspect-ratio:auto; height:calc(100vh - 262px); min-height:240px; background:#05040c; }
-    main.live-focus .canvas-wrap canvas { object-fit:cover; object-position:50% 30%; }
-    main.live-focus.fit .canvas-wrap canvas { object-fit:contain; }
+    main.live-focus .canvas-wrap { width:100%; aspect-ratio:auto; height:calc(100vh - 286px); min-height:240px; background:#05040c; }
+    main.live-focus .canvas-wrap canvas#screen { object-fit:contain; position:relative; z-index:1; }
+    main.live-focus .canvas-wrap canvas#screenBg { display:block; position:absolute; inset:0; width:100%; height:100%; object-fit:cover; filter:blur(24px) saturate(1.15); transform:scale(1.15); opacity:.85; }
+    main.live-focus.zoom .canvas-wrap canvas#screen { object-fit:cover; object-position:50% 30%; }
+    main.live-focus.zoom .canvas-wrap canvas#screenBg { display:none; }
     main.live-focus #fitBtn { display:block; }
     main.live-focus #jobResults { margin-top:8px; }
     main.live-focus .steps-log-grid { order:5; grid-template-columns:minmax(0,1fr) !important; margin-top:10px; }
@@ -853,6 +855,8 @@
   .timing-row .choice-grid > #scheduleHint { grid-column:1 / -1; margin:0; font-size:12px; }
   html[data-theme="dark"] .maker-sum .ic { background:rgba(120,90,255,.22) !important; }
   @media (max-width:640px) { header .tag { display:none; } header { flex-wrap:wrap; gap:8px; } }
+  #screenBg { display:none; }
+  .canvas-wrap { overflow:hidden; }
 </style>
 
 </head>
@@ -1082,10 +1086,11 @@
     <div class="browser-frame">
       <div class="browser-titlebar"><span class="tl"><span class="t1"></span><span class="t2"></span><span class="t3"></span></span><span class="title" id="browserTitle">Chrome — idle</span></div>
       <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="screenBg" width="64" height="40" aria-hidden="true"></canvas>
         <canvas id="screen" width="1100" height="700"></canvas>
         <div class="overlay" id="canvasOverlay">No automation running. Submit the form to watch it work here.</div>
         <div class="view-only-tag">View only</div>
-        <button type="button" id="fitBtn" title="Switch between filling the space and showing the whole page">Show whole page</button>
+        <button type="button" id="fitBtn" title="Zoom the picture to fill the stage (crops the edges), or show the whole page">Zoom to fill</button>
       </div>
     </div>
 
@@ -1490,8 +1495,8 @@ document.getElementById('cancelBtn').addEventListener('click', async e => {
   catch (err) { btn.disabled = false; btn.textContent = 'Cancel upload'; alert(err.message); }
 });
 document.getElementById('fitBtn').addEventListener('click', e => {
-  const on = document.querySelector('main').classList.toggle('fit');
-  e.currentTarget.textContent = on ? 'Fill the space' : 'Show whole page';
+  const zoomed = document.querySelector('main').classList.toggle('zoom');
+  e.currentTarget.textContent = zoomed ? 'Show whole page' : 'Zoom to fill';
 });
 document.getElementById('newPostBtn').addEventListener('click', () => { focusJobId = null; document.querySelector('main').classList.remove('live-focus'); window.scrollTo({ top: 0 }); });
 
@@ -1565,6 +1570,7 @@ async function connectWs() {
       frameW = m.w; frameH = m.h;
       if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }
       cctx.drawImage(img, 0, 0);
+      const bg = document.getElementById('screenBg'); bg.height = Math.max(8, Math.round(64 * img.height / img.width)); bg.getContext('2d').drawImage(img, 0, 0, bg.width, bg.height);
       canvasWrap.classList.add('has-frame');
     };
     img.src = 'data:image/jpeg;base64,' + m.d;
