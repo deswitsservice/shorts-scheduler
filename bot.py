@@ -136,7 +136,27 @@ def _auto_dismiss_dialogs(pg):
     a fresh Page wrapper (new connect_over_cdp() per with-block), so this is safe to attach every time."""
     pg.on("dialog", lambda dialog: dialog.accept())
     _restore_if_minimized(pg)
+    _fix_viewport(pg)
     return pg
+
+
+def _viewport():
+    try:
+        w, h = (int(x) for x in os.environ.get("SHORTS_VIEWPORT", "1280x800").lower().split("x"))
+        if 800 <= w <= 3840 and 500 <= h <= 2160:
+            return {"width": w, "height": h}
+    except ValueError:
+        pass
+    return {"width": 1280, "height": 800}
+
+
+def _fix_viewport(pg):
+    """The upload pages switch to a narrow/mobile layout when the real Chrome window is small (side panel, odd window
+    bounds, minimized), and every selector below then misses. Pin the layout viewport so it never depends on the window."""
+    try:
+        pg.set_viewport_size(_viewport())
+    except Exception:
+        pass  # best effort; never block a posting job on this
 
 
 def _restore_if_minimized(pg):
