@@ -680,7 +680,7 @@
     main.live-focus #jobResults { order:3; }
     main.live-focus #newPostBtn { padding:6px 12px; white-space:nowrap; }
     main.live-focus #platTabs, main.live-focus #jobHistoryHint, main.live-focus label[for=jobSelect], main.live-focus #jobSelect { display:none; }
-    main.live-focus .journey { order:2; margin-top:4px; padding:46px 10px 6px; }
+    main.live-focus .journey { order:2; margin-top:4px; padding:52px 10px 6px; }
     main.live-focus .journey .jsay { margin-top:8px; }
     main.live-focus .journey .jn .orb { width:40px; height:40px; }
     main.live-focus .journey .jline { top:20px; }
@@ -1551,10 +1551,11 @@ function renderJourney(job) {
     const p = node.dataset.p, st = job.steps[p];
     node.style.display = st ? '' : 'none';
     if (!st) return;
-    const cls = st.state === 'running' ? 'running' : (st.state === 'done' || String(st.state).startsWith('checked')) ? 'done' : st.state === 'failed' ? 'failed' : 'queued';
+    const retrying = !job.finished && p === job.current_platform && st.state === 'failed' && st.error !== 'Cancelled';
+    const cls = st.state === 'running' || retrying ? 'running' : (st.state === 'done' || String(st.state).startsWith('checked')) ? 'done' : st.state === 'failed' ? 'failed' : 'queued';
     if (!node.classList.contains(cls)) { node.classList.remove('queued', 'running', 'done', 'failed'); node.classList.add(cls); }
     const mark = node.querySelector('.mark'); mark.textContent = cls === 'failed' ? '✕' : '✓';
-    node.querySelector('small').textContent = { queued: 'waiting', running: isScheduled(job) ? 'uploading…' : 'posting…', done: String(st.state).startsWith('checked') ? 'checked' : isScheduled(job) ? 'scheduled' : 'succeeded', failed: 'failed' }[cls];
+    node.querySelector('small').textContent = { queued: 'waiting', running: retrying ? 'retrying…' : isScheduled(job) ? 'uploading…' : 'posting…', done: String(st.state).startsWith('checked') ? 'checked' : isScheduled(job) ? 'scheduled' : 'succeeded', failed: 'failed' }[cls];
   });
   // clip position + progress line (nodes sit at the centre of equal columns)
   const doneCount = plats.filter(p => ['done', 'failed'].includes(job.steps[p].state) || String(job.steps[p].state).startsWith('checked')).length;
