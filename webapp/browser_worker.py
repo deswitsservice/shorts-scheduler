@@ -15,12 +15,12 @@ import urllib.request
 def _window_size():
     """Automation Chrome window as (w, h). Wider than tall so the in-app live view (a wide stage) shows a bigger picture."""
     try:
-        w, h = (int(x) for x in os.environ.get('SHORTS_WINDOW_SIZE', '1800x900').lower().split('x'))
+        w, h = (int(x) for x in os.environ.get('SHORTS_WINDOW_SIZE', '1200x850').lower().split('x'))
         if 800 <= w <= 3840 and 600 <= h <= 2160:
             return w, h
     except ValueError:
         pass
-    return 1800, 900
+    return 1200, 850
 
 
 class BrowserWorker:
@@ -114,6 +114,7 @@ class BrowserWorker:
                 flags = [f'--user-data-dir={self.profile}', '--remote-debugging-address=127.0.0.1',
                          '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
                          '--disable-session-crashed-bubble', '--window-size=%d,%d' % _window_size(),
+                         '--disable-features=MacWebContentsOcclusion', '--disable-backgrounding-occluded-windows',
                          '--window-position=-2400,-2400', 'about:blank']
                 if _manual_url is not None:
                     flags = [f'--user-data-dir={self.profile}', '--no-first-run', '--no-default-browser-check',
