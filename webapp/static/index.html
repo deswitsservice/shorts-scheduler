@@ -685,7 +685,7 @@
     main.live-focus .journey { margin-top:6px; }
   }
   .retry-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink2,#5b5473); }
-  .retry-btn { padding:8px 16px; border-radius:10px; border:0; cursor:pointer; font:inherit; font-weight:700; color:#fff; background:linear-gradient(135deg,#6d4dff,#c04fd6); box-shadow:0 6px 16px -8px rgba(109,77,255,.8); }
+  .retry-btn { padding:8px 16px; border-radius:10px; border:0; cursor:pointer; font:inherit; font-weight:700; color:#fff; background:linear-gradient(135deg,#5a3ae0,#9d34bd); box-shadow:0 6px 16px -8px rgba(109,77,255,.8); }
   .retry-btn:disabled { opacity:.6; cursor:default; }
   .maker-sum { display:flex; align-items:center; gap:12px; cursor:pointer; list-style:none; }
   .maker-sum::-webkit-details-marker { display:none; }
@@ -695,6 +695,10 @@
   .maker-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px; }
   #mkMsg.err { color:#e5484d; }
   html[data-theme="dark"] #mkMsg.err { color:#ff9aa2; }
+  .status-pill.helper-on { background:rgba(31,154,85,.18) !important; color:#0b5a2f !important; border-color:rgba(31,154,85,.4) !important; }
+  .status-pill.helper-on .dot { background:#1f9a55 !important; animation:none; }
+  html[data-theme="dark"] .status-pill.helper-on { color:#7ff0ae !important; }
+  #helperPairBtn { color:#fff !important; background:linear-gradient(135deg,#5a3ae0,#9d34bd) !important; border:0 !important; }
 </style>
 </head>
 <body>
@@ -732,6 +736,16 @@
         <button type="button" class="pill-btn" data-connect="instagram">Connect Instagram</button>
         <button type="button" class="pill-btn" data-connect="facebook">Connect Facebook</button>
         <button type="button" class="pill-btn" data-connect="tiktok">Connect TikTok</button>
+      </div>
+      <div id="helperPanel" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>Your helper</b><span class="status-pill idle" id="helperPill"><span class="dot"></span><span id="helperText">Not paired</span></span></div>
+        <p class="hint" id="helperHint">Posting runs on your own computer, using your own signed-in Chrome. Your logins never reach this website.</p>
+        <button type="button" class="retry-btn" id="helperPairBtn">Pair a helper</button>
+        <div id="helperCode" hidden style="margin-top:10px">
+          <div class="hint">On your computer, run this (the code works once, for 10 minutes):</div>
+          <pre id="helperCmd" style="white-space:pre-wrap;word-break:break-all;margin:6px 0;padding:10px;border-radius:8px;background:rgba(120,100,190,.12);user-select:all"></pre>
+          <div class="hint">Then run <b>login</b> once to sign in to your platforms, and <b>run</b> to start posting. Keep it running while you use this page.</div>
+        </div>
       </div>
       <div id="manualSignIn" hidden style="margin-top:12px;padding:12px;background:#f4f7ff;border-radius:10px">
         <p class="hint">Google blocking in-app sign-in? Try signing in directly in Chrome on this Mac. This opens a separate window in front.</p>
@@ -982,6 +996,13 @@ const PLAT_BADGE = {
 };
 const PLAT_NAME = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok' };
 
+document.addEventListener('click', async e => {
+  if (e.target.id !== 'helperPairBtn') return;
+  const r = await fetch('/api/helper/pair-code', { method: 'POST' }), b = await r.json().catch(() => ({}));
+  if (!r.ok) return;
+  document.getElementById('helperCmd').textContent = `python3 helper/shorts_helper.py pair --server ${location.origin} --code ${b.code}`;
+  document.getElementById('helperCode').hidden = false;
+});
 /* ---------- accounts ---------- */
 let chromeIsRunning = false;
 let hostedPending = false;
@@ -992,6 +1013,22 @@ async function refreshAccounts() {
   try {
     const a = await (await fetch('/api/accounts')).json();
     hostedPending = !!a.hosted_pending;
+    document.getElementById('helperPanel').hidden = !a.helper_mode;
+    if (a.helper_mode) {
+      const h = a.helper, pill = document.getElementById('helperPill');
+      pill.className = 'status-pill idle' + (h.online ? ' helper-on' : '');
+      document.getElementById('helperText').textContent = !h.paired ? 'Not paired' : (h.online ? 'Online' + (h.name ? ' \u00b7 ' + h.name : '') : 'Offline');
+      document.getElementById('helperPairBtn').textContent = h.paired ? 'Pair another computer' : 'Pair a helper';
+      document.getElementById('platformConnections').hidden = true;
+      document.getElementById('manualSignIn').hidden = true;
+      chromeIsRunning = !!a.chrome;
+      document.getElementById('browserOff').style.display = 'none';
+      document.getElementById('go').disabled = !h.online;
+      document.getElementById('browserMessage').textContent = h.online ? '' : (h.paired ? 'Your helper is offline. Start it on your computer to post.' : 'Pair a helper below to start posting.');
+      const setH = (dotId, textId, on) => { document.getElementById(dotId).classList.toggle('on', !!on); document.getElementById(textId).textContent = h.online ? (on ? 'Session detected' : 'Not connected') : 'helper offline'; };
+      setH('d-youtube', 't-youtube', a.youtube); setH('d-meta1', 't-meta1', a.meta); setH('d-meta2', 't-meta2', a.meta); setH('d-tiktok', 't-tiktok', a.tiktok);
+      return;
+    }
     const wasManual = manualSignInActive;
     manualSignInActive = !!a.manual_active;
     document.getElementById('manualSignIn').hidden = !a.manual_available;
