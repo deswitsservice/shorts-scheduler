@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Internal single-workspace automation engine. Serve through authenticated server.py only."""
-import asyncio, datetime, os, re, sys, time, uuid
+import asyncio, datetime, os, re, shutil, sys, time, uuid
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
+sys.path.insert(0, HERE)
+import videomaker  # noqa: E402
 import bot  # noqa: E402  (browser flows: youtube / meta / tiktok)
 
 from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect  # noqa: E402
@@ -20,6 +22,8 @@ CDP = f"http://127.0.0.1:{bot.PORT}"
 app = FastAPI()
 executor = ThreadPoolExecutor(max_workers=1)  # one browser -> one job at a time
 jobs = {}
+video_jobs = {}
+build_executor = ThreadPoolExecutor(max_workers=1)  # video builds are CPU heavy; one at a time
 
 MAX_VIDEO_BYTES = 500 * 1024 * 1024  # 500MB: generous for a <=60s 1080x1920 clip, guards against filling the disk
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
@@ -301,6 +305,76 @@ def retry_job(jid: str):
     job["current_platform"] = None
     executor.submit(run_job, job)
     return {"id": jid, "retrying": failed}
+
+
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
+
+
+def _run_video_build(vj):
+    try:
+        out, report = videomaker.build(vj["dir"], vj["script"], vj["images"], vj["voice"],
+                                       on_step=lambda m: vj.__setitem__("step", m))
+        final = os.path.join(UPLOADS, f"{vj['id']}_video.mp4")
+        os.replace(out, final)
+        vj["file_url"], vj["report"], vj["state"] = f"/uploads/{os.path.basename(final)}", report, "done"
+    except videomaker.BuildError as e:
+        vj["state"], vj["error"] = "failed", str(e)
+    except Exception as e:  # noqa: BLE001
+        vj["state"], vj["error"] = "failed", friendly_error(e)
+    finally:
+        shutil.rmtree(vj["dir"], ignore_errors=True)
+
+
+async def _save_upload(up, dest, limit):
+    size = 0
+    with open(dest, "wb") as f:
+        while chunk := await up.read(1024 * 1024):
+            size += len(chunk)
+            if size > limit:
+                f.close()
+                os.remove(dest)
+                return False
+            f.write(chunk)
+    return True
+
+
+@app.post("/api/video/create")
+async def video_create(script: str = Form(...), voice: UploadFile = File(...), images: list[UploadFile] = File(...)):
+    if not script.strip():
+        return JSONResponse({"error": "Paste your script first."}, status_code=400)
+    if not 1 <= len(images) <= 12:
+        return JSONResponse({"error": "Upload between 1 and 12 images, one per scene."}, status_code=400)
+    if os.path.splitext(voice.filename or "")[1].lower() not in AUDIO_EXTS:
+        return JSONResponse({"error": "The voice recording must be an mp3, wav, m4a, aac or ogg file."}, status_code=400)
+    if any(os.path.splitext(i.filename or "")[1].lower() not in IMAGE_EXTS for i in images):
+        return JSONResponse({"error": "Images must be png, jpg or webp."}, status_code=400)
+    vid = uuid.uuid4().hex[:12]
+    wdir = os.path.join(UPLOADS, f"vm_{vid}")
+    os.makedirs(wdir, exist_ok=True)
+    voice_path = os.path.join(wdir, "voice" + os.path.splitext(voice.filename)[1].lower())
+    paths = []
+    ok = await _save_upload(voice, voice_path, 60 * 1024 * 1024)
+    for n, img in enumerate(images):
+        dest = os.path.join(wdir, f"scene{n + 1}" + os.path.splitext(img.filename)[1].lower())
+        ok = ok and await _save_upload(img, dest, 20 * 1024 * 1024)
+        paths.append(dest)
+    if not ok:
+        shutil.rmtree(wdir, ignore_errors=True)
+        return JSONResponse({"error": "A file is too large (audio max 60MB, images max 20MB each)."}, status_code=400)
+    vj = {"id": vid, "state": "running", "step": "Queued", "error": None, "file_url": None, "report": None, "created": time.time(),
+          "dir": wdir, "script": script, "images": paths, "voice": voice_path}
+    video_jobs[vid] = vj
+    build_executor.submit(_run_video_build, vj)
+    return {"id": vid}
+
+
+@app.get("/api/video/{vid}")
+def video_status(vid: str):
+    vj = video_jobs.get(vid)
+    if not vj:
+        return JSONResponse({"error": "Video job not found."}, status_code=404)
+    return {k: vj[k] for k in ("id", "state", "step", "error", "file_url", "report")}
 
 
 @app.get("/api/jobs")
