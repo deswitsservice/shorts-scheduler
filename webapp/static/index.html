@@ -725,31 +725,158 @@
   #fitBtn:hover { background:rgba(8,6,20,.85); }
   main.live-focus .view-only-tag { background:rgba(8,6,20,.6) !important; color:#fff !important; border-color:rgba(255,255,255,.3) !important; backdrop-filter:blur(6px); }
 </style>
+<style id="theme-mockup">
+  /* Layout + components from the supplied design mockup. Light palette is scoped to html:not([data-theme=dark]); dark keeps its own colours. */
+  header { display:flex !important; align-items:center; justify-content:space-between; padding:12px 28px !important; min-height:72px; border-radius:0 !important; }
+  header::before, header::after { display:none !important; }
+  header .brand { display:flex; align-items:center; gap:14px; }
+  header .brand .heart { flex:none; filter:drop-shadow(0 4px 8px rgba(255,77,148,.35)); animation:heartbeat 2.6s ease-in-out infinite; }
+  header h1 { margin:0; font-size:26px !important; font-weight:800; letter-spacing:-.02em; text-shadow:none !important; }
+  header .tag { font:500 16px/1.2 ui-rounded,"SF Pro Rounded",-apple-system,"Segoe UI",sans-serif !important; margin:2px 0 0 8px !important; opacity:.9; }
+  header .tag-heart { color:#ff3d7f; }
+  header .right { display:flex; align-items:center; gap:12px; }
+  header #themeToggle { width:44px; height:44px; padding:0; border-radius:14px; display:grid; place-items:center; }
+  .acct-menu { position:relative; }
+  #acctBtn { display:flex; align-items:center; gap:10px; padding:6px 14px 6px 6px; border-radius:16px; border:1px solid rgba(255,255,255,.4); background:rgba(255,255,255,.2); color:inherit; font:inherit; font-weight:700; cursor:pointer; }
+  #acctBtn .avatar { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; color:#fff; background:linear-gradient(135deg,#7a4dff,#ff4d94); }
+  .acct-drop { position:absolute; right:0; top:calc(100% + 8px); min-width:170px; padding:6px; border-radius:14px; z-index:30; box-shadow:0 18px 40px -16px rgba(30,40,90,.45); }
+  .acct-drop button { width:100%; text-align:left; padding:10px 12px; border:0; border-radius:10px; background:none; font:inherit; font-weight:600; cursor:pointer; color:inherit; }
+  .acct-drop button:hover { background:rgba(80,100,200,.12); }
+  .acct-drop[hidden] { display:none; }
+  main { margin-top:14px !important; padding:0 24px 40px !important; gap:20px !important; max-width:1600px; margin-left:auto; margin-right:auto; }
+
+  /* accounts status */
+  #accounts { padding:16px 20px; }
+  .acc-top { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .acc-top h2 { margin:0; font-size:18px; font-weight:800; }
+  .acc-ic { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; color:#2f5bff; background:#eaf1ff; border:1.5px solid #cfdcff; }
+  .ready { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:#8a5a00; }
+  .ready .dot { width:9px; height:9px; border-radius:50%; background:#f5a524; }
+  .ready.ok { color:#15803d; } .ready.ok .dot { background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.2); }
+  #accounts .accounts-row { display:grid !important; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px !important; margin-top:12px !important; }
+  #accounts .accounts-row .acct { background:none !important; border:0 !important; box-shadow:none !important; padding:6px 4px !important; transform:none !important; display:grid; grid-template-columns:auto 1fr; column-gap:12px; row-gap:0; align-items:center; }
+  #accounts .accounts-row .acct .badge { width:40px !important; height:40px !important; border-radius:12px !important; font-size:17px !important; grid-row:span 2; }
+  #accounts .accounts-row .acct .name { font-size:15px !important; font-weight:700; align-self:end; }
+  #accounts .accounts-row .acct .st { font-size:12px !important; align-self:start; }
+
+  /* new post */
+  .np-ic { background:#eaf1ff !important; color:#2f5bff; border:1.5px solid #cfdcff; box-shadow:none !important; }
+  .uploads { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:6px; }
+  .dropcard { display:block !important; text-align:left !important; padding:14px !important; border-style:solid !important; border-width:1.5px !important; border-radius:14px !important; min-height:0 !important; }
+  .dropcard:hover { transform:none !important; }
+  .dc-head { display:flex; align-items:center; gap:12px; padding-right:24px; }
+  .dc-ic { width:40px; height:40px; flex:none; border-radius:12px; display:grid; place-items:center; color:#2f5bff; background:#eaf1ff; }
+  .dc-title { font-size:14px; font-weight:800; } .dc-title .opt { font-weight:500; opacity:.75; }
+  .dc-sub { font-size:12px; opacity:.72; }
+  .dropcard .placeholder { margin-top:12px; padding:18px 10px; border:1.5px dashed rgba(90,110,190,.35); border-radius:10px; text-align:center; }
+  .dropcard .ph-sub { margin:0 !important; font-size:12.5px !important; }
+  .dropcard .preview { margin-top:12px; }
+  .dropcard .preview img { width:60px !important; height:92px !important; border-radius:8px; }
+  .dropcard #thumbPreview { width:60px !important; height:92px !important; }
+  .dropcard.filled { border-color:#3d6bff !important; }
+  .dropcard .clear { top:10px !important; right:10px !important; }
+  .frow { display:grid; grid-template-columns:120px minmax(0,1fr); gap:14px; align-items:start; margin-top:16px; }
+  .frow > label.field-label, .frow > .field-label { margin:10px 0 0 !important; }
+  .frow .lbl-sub { font-weight:500; opacity:.7; font-size:12px; display:block; }
+  .fcol { min-width:0; }
+  .frow .hint { margin:6px 0 0; }
+  .inwrap { position:relative; }
+  .inwrap input, .inwrap textarea { width:100%; padding-right:78px !important; }
+  .inwrap textarea { min-height:78px; padding-bottom:26px; }
+  .inwrap .counter { position:absolute; right:12px; top:50%; transform:translateY(-50%); float:none; font-size:12px; opacity:.7; pointer-events:none; }
+  .inwrap.ta .counter { top:auto; bottom:8px; transform:none; }
+  #platGrid { display:flex !important; flex-wrap:wrap; gap:8px 20px !important; justify-content:flex-start !important; padding-top:6px; }
+  #platGrid .plat-chip { padding:2px 0 !important; border:0 !important; background:none !important; box-shadow:none !important; opacity:1 !important; gap:8px; font-weight:600; transform:none !important; }
+  #platGrid .plat-chip .badge { width:26px; height:26px; }
+  #platGrid .plat-chip input { width:17px; height:17px; }
+  #mfkGroup { padding:14px !important; margin-top:16px !important; border-radius:14px !important; }
+  .mfk-head { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+  .yt-ic { width:36px; height:36px; border-radius:10px; background:#ff0033; color:#fff; display:grid; place-items:center; font-size:15px; flex:none; }
+  #mfkGroup .choice-grid, .timing-row .choice-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:0; }
+  #mfkGroup .choice-card, .timing-row .choice-card { display:grid !important; column-gap:12px; row-gap:2px; align-items:center; padding:14px !important; border-radius:12px !important; }
+  #mfkGroup .choice-card { grid-template-columns:auto 1fr; }
+  .timing-row .choice-card { grid-template-columns:auto auto 1fr; }
+  .choice-card > input { grid-row:1 / span 2; margin:0 !important; width:18px; height:18px; }
+  .choice-card .t { grid-column:-2; font-size:14px !important; } .choice-card .d { grid-column:-2; font-size:12px; opacity:.78; }
+  .timing-row .choice-card > .ci { grid-row:1 / span 2; grid-column:2; }
+  .timing-row .choice-card > #scheduleHint, .timing-row .choice-card > .schedule-fields { grid-column:1 / -1; }
+  .timing-row .schedule-fields input { width:100%; margin-top:8px; }
+  .ci { width:38px; height:38px; border-radius:50%; display:grid; place-items:center; color:#2f5bff; background:#eaf1ff; }
+  .story-row { display:flex; align-items:center; gap:12px; margin-top:18px; }
+  .story-row .two-ic { display:inline-flex; gap:6px; }
+  .story-row .badge, .two-ic .badge { width:30px; height:30px; border-radius:9px; display:grid; place-items:center; color:#fff; font-size:13px; }
+  .story-row .t { font-weight:700; } .story-row .d, .dry-row .d { font-size:12px; opacity:.75; }
+  .submit-row { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:22px; }
+  .dry-row { display:flex; align-items:center; gap:12px; }
+  .dry-ic { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; color:#2f5bff; background:#eaf1ff; }
+  .dry-row .t { font-weight:700; }
+  #go { display:inline-flex !important; align-items:center; justify-content:center; gap:10px; min-width:230px; padding:14px 26px !important; border-radius:12px !important; font-size:15px; font-weight:800; margin-left:auto; }
+  @media (max-width:640px) { .frow { grid-template-columns:1fr; gap:4px; } .frow > label.field-label, .frow > .field-label { margin-top:0 !important; } .uploads, #mfkGroup .choice-grid, .timing-row .choice-grid { grid-template-columns:1fr; } #accounts .accounts-row { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+  /* ============ light palette (mockup) ============ */
+  html:not([data-theme="dark"]) body { background:linear-gradient(135deg,#e6f0ff 0%,#f2edff 55%,#fcedf6 100%) !important; color:#10204d; }
+  html:not([data-theme="dark"]) body::before, html:not([data-theme="dark"]) body::after { opacity:.18; }
+  html:not([data-theme="dark"]) header { background:linear-gradient(90deg,#fde8f1 0%,#efe7ff 46%,#e0edff 100%) !important; color:#10204d !important; box-shadow:0 1px 0 rgba(90,110,190,.12) !important; }
+  html:not([data-theme="dark"]) header h1 { color:#10204d; }
+  html:not([data-theme="dark"]) header .tag { color:#33456f !important; }
+  html:not([data-theme="dark"]) header .pill-btn { background:#fff !important; color:#10204d !important; border:1px solid #dfe7f7 !important; box-shadow:0 4px 12px -6px rgba(50,80,160,.3); backdrop-filter:none; }
+  html:not([data-theme="dark"]) #acctBtn { background:#fff; border:1px solid #dfe7f7; color:#10204d; box-shadow:0 4px 12px -6px rgba(50,80,160,.3); }
+  html:not([data-theme="dark"]) .acct-drop { background:#fff; border:1px solid #e2eafa; color:#10204d; }
+  html:not([data-theme="dark"]) .card { background:rgba(255,255,255,.95) !important; border:1px solid #e3ebfa !important; border-radius:18px !important; box-shadow:0 10px 30px -16px rgba(50,80,160,.28) !important; backdrop-filter:none !important; }
+  html:not([data-theme="dark"]) .card:hover { transform:none !important; }
+  html:not([data-theme="dark"]) #accounts { background:linear-gradient(120deg,#e8f8f2,#eef5ff) !important; }
+  html:not([data-theme="dark"]) input[type=text], html:not([data-theme="dark"]) input[type=datetime-local], html:not([data-theme="dark"]) textarea, html:not([data-theme="dark"]) select { background:#fff !important; border:1.5px solid #dbe4f5 !important; border-radius:10px !important; color:#10204d; }
+  html:not([data-theme="dark"]) input:focus, html:not([data-theme="dark"]) textarea:focus { border-color:#3d6bff !important; box-shadow:0 0 0 3px rgba(61,107,255,.16) !important; }
+  html:not([data-theme="dark"]) .dropcard, html:not([data-theme="dark"]) .choice-card, html:not([data-theme="dark"]) .subcard { background:#fff !important; border-color:#dbe4f5 !important; }
+  html:not([data-theme="dark"]) #mfkGroup { background:#f3f7ff !important; border:1px solid #dbe4f5 !important; }
+  html:not([data-theme="dark"]) .choice-card.on { background:#eef3ff !important; border-color:#3d6bff !important; }
+  html:not([data-theme="dark"]) .card-head h2, html:not([data-theme="dark"]) label.field-label, html:not([data-theme="dark"]) .field-label { color:#10204d; }
+  html:not([data-theme="dark"]) .card-head p, html:not([data-theme="dark"]) .hint, html:not([data-theme="dark"]) .dc-sub { color:#5b6b92; opacity:1; }
+  html:not([data-theme="dark"]) #go { background:linear-gradient(90deg,#2f5bff 0%,#7a4dff 50%,#ff3d9a 100%) !important; color:#fff !important; box-shadow:0 14px 28px -12px rgba(80,80,255,.55) !important; border:0 !important; }
+
+  /* ============ dark: colours for the new pieces ============ */
+  html[data-theme="dark"] header .tag { color:#fff; }
+  html[data-theme="dark"] #acctBtn { background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.35); color:#fff; }
+  html[data-theme="dark"] .acct-drop { background:#1d1a3a; border:1px solid rgba(160,130,255,.3); color:#efeaff; }
+  html[data-theme="dark"] .acc-ic, html[data-theme="dark"] .dc-ic, html[data-theme="dark"] .ci, html[data-theme="dark"] .dry-ic, html[data-theme="dark"] .np-ic { background:rgba(120,90,255,.22) !important; color:#cdbfff !important; border-color:rgba(160,130,255,.35); }
+  html[data-theme="dark"] .acc-top h2, html[data-theme="dark"] .dc-title, html[data-theme="dark"] .mfk-head b, html[data-theme="dark"] .story-row .t, html[data-theme="dark"] .dry-row .t, html[data-theme="dark"] #accounts .accounts-row .acct .name { color:#fff; }
+  html[data-theme="dark"] .ready { color:#ffd479; } html[data-theme="dark"] .ready.ok { color:#7ff0ae; }
+  html[data-theme="dark"] .dropcard .placeholder { border-color:rgba(190,170,255,.4); }
+  html[data-theme="dark"] .dc-sub, html[data-theme="dark"] .story-row .d, html[data-theme="dark"] .dry-row .d, html[data-theme="dark"] .choice-card .d, html[data-theme="dark"] .inwrap .counter { color:#c4bee6; opacity:1; }
+  html[data-theme="dark"] .dropcard.filled { border-color:#a98bff !important; }
+  html:not([data-theme="dark"]) .journey .jclip .card { background:linear-gradient(160deg,#ff7a59,#8b5cf6) !important; border:0 !important; border-radius:9px !important; box-shadow:0 8px 16px rgba(139,92,246,.4) !important; }
+  .frow > span.field-label { font-size:13px; font-weight:700; }
+  .timing-row .choice-card, #mfkGroup .choice-card { align-content:center; }
+  .steps-log-grid { grid-template-columns:minmax(0,1fr) !important; }
+  @media (min-width:1000px) { .live-head { flex-wrap:nowrap !important; align-items:center; gap:10px; } .live-head .card-head { flex:1; min-width:0; } .live-head #newPostBtn, .live-head #cancelBtn, .live-head #statusPill { flex:none; } }
+  #platformConnections [hidden] { display:none !important; }
+  .timing-row .choice-grid > #scheduleHint { grid-column:1 / -1; margin:0; font-size:12px; }
+  html[data-theme="dark"] .maker-sum .ic { background:rgba(120,90,255,.22) !important; }
+  @media (max-width:640px) { header .tag { display:none; } header { flex-wrap:wrap; gap:8px; } }
+</style>
+
 </head>
 <body>
 
 <header>
   <div class="brand">
-    <div class="logo">❤️</div>
-    <div>
-      <h1>Shorts Everywhere</h1>
-      <div class="tag">Upload once. Post everywhere.</div>
-    </div>
+    <svg class="heart" viewBox="0 0 32 32" width="40" height="40" aria-hidden="true"><defs><linearGradient id="hg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff4d94"/><stop offset="1" stop-color="#7a4dff"/></linearGradient></defs><path d="M16 28.5C6 21.6 3 16.4 3 11.6 3 7.6 6 5 9.4 5c2.7 0 5 1.6 6.6 4C17.6 6.6 19.9 5 22.6 5 26 5 29 7.6 29 11.6c0 4.8-3 10-13 16.9z" fill="url(#hg)"/></svg>
+    <h1>Shorts Everywhere</h1>
+    <div class="tag">Upload once. Post everywhere. <span class="tag-heart">&#10084;</span></div>
   </div>
   <div class="right">
-    <div class="pill-btn">YouTube · Instagram · Facebook · TikTok</div>
-
-    <span id="signedInEmail" hidden></span><button class="pill-btn" id="themeToggle" type="button" aria-label="Switch between dark and light theme" title="Switch theme">🌙</button><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signOut" type="button" hidden>Sign out</button>
+    <span id="signedInEmail" hidden></span><button class="pill-btn" id="themeToggle" type="button" aria-label="Switch between dark and light theme" title="Switch theme">🌙</button><a class="pill-btn" id="signIn" href="/login">Sign in</a>
+    <div class="acct-menu" id="acctMenu" hidden>
+      <button type="button" id="acctBtn" aria-haspopup="menu" aria-expanded="false"><span class="avatar"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="8.5" r="4"/><path d="M4 21c.6-4.3 4-6.5 8-6.5s7.4 2.2 8 6.5z"/></svg></span><span class="acct-label">My Account</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="acct-drop" id="acctDrop" role="menu" hidden><button type="button" id="signOut" role="menuitem">Sign out</button></div>
+    </div>
   </div>
 </header>
 
 <main>
   <section>
     <div class="card" id="accounts">
-      <div class="card-head">
-        <div class="ic" style="background:#fdecea">📋</div>
-        <div><h2>Accounts Status</h2><p>Connect your platforms here. Sessions are saved in your private browser.</p></div>
-      </div>
+      <div class="acc-top"><span class="acc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.3 2.3 4.7-5"/></svg></span><h2>Accounts Status</h2><span class="ready" id="allReady"><span class="dot"></span><span id="allReadyText">Checking…</span></span></div>
       <div class="accounts-row">
         <div class="acct"><span class="badge" style="background:var(--yt)">▶</span><span class="name">YouTube</span><span class="st"><span class="dot" id="d-youtube"></span><span id="t-youtube">checking…</span></span></div>
         <div class="acct"><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span><span class="name">Instagram</span><span class="st"><span class="dot" id="d-meta1"></span><span id="t-meta1">checking…</span></span></div>
@@ -807,44 +934,61 @@
 
     <div class="card">
       <div class="card-head">
-        <div class="ic" style="background:#eef0ff">📝</div>
-        <div><h2>New Post</h2><p>Fill in the details and share your message with the world.</p></div>
+        <div class="ic np-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 00-3-3L5 17z"/><path d="M14 7l3 3"/></svg></div>
+        <div><h2>New Post</h2><p>Fill in the details and schedule your short video.</p></div>
       </div>
       <div class="card-body">
         <form id="form">
-          <label class="field-label">Video <span class="req">*</span> <span class="hint" style="float:right;font-weight:400">Vertical (9:16) · 30–60s</span></label>
           <div class="uploads">
             <div class="dropcard" id="videoCard">
               <button type="button" class="clear" aria-label="Remove video" data-clear="file">✕</button>
-              <div class="placeholder"><div class="placeholder-ic">🎬</div><div class="ph-title">Upload Video</div><div class="ph-sub">Click or drop a file</div></div>
+              <div class="dc-head"><span class="dc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/></svg></span><div><div class="dc-title">Upload Video <span class="req">*</span></div><div class="dc-sub">Vertical video (9:16) &bull; 30&ndash;60s</div></div></div>
+              <div class="placeholder"><div class="ph-sub">Click or drop a video file here</div></div>
               <div class="preview"><img id="videoThumb" alt=""><div class="meta"><div class="fname" id="videoName"></div><div class="fsub" id="videoMeta"></div></div></div>
               <input aria-label="Upload video" type="file" id="file" accept="video/*" required>
             </div>
             <div class="dropcard" id="thumbCard">
               <button type="button" class="clear" aria-label="Remove thumbnail" data-clear="thumb">✕</button>
-              <div class="placeholder"><div class="placeholder-ic">🖼️</div><div class="ph-title">Thumbnail / Cover</div><div class="ph-sub">Optional · JPG or PNG</div></div>
+              <div class="dc-head"><span class="dc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-4.5 4 3.5 3-2.5 4 3.5"/></svg></span><div><div class="dc-title">Upload Thumbnail / Cover <span class="opt">(Optional)</span></div><div class="dc-sub">JPG or PNG</div></div></div>
+              <div class="placeholder"><div class="ph-sub">Click or drop an image here</div></div>
               <div class="preview"><img id="thumbPreview" alt=""><div class="meta"><div class="fname" id="thumbName"></div><div class="fsub" id="thumbMeta"></div></div></div>
               <input aria-label="Upload thumbnail" type="file" id="thumb" accept="image/png,image/jpeg">
             </div>
           </div>
 
-          <label class="field-label">Title <span class="req">*</span><span class="counter" id="titleCount">0/100</span></label>
-          <input type="text" id="title" aria-label="Title" maxlength="100" placeholder="Good Things Take Time ❤️" required>
-          <div class="hint">Shown as the YouTube title (max 100). Instagram, Facebook and TikTok use the description below; the title is also your job name here.</div>
+          <div class="frow">
+            <label class="field-label" for="title">Title <span class="req">*</span></label>
+            <div class="fcol">
+              <div class="inwrap"><input type="text" id="title" aria-label="Title" maxlength="100" placeholder="Good Things Take Time ❤️" required><span class="counter" id="titleCount">0/100</span></div>
+              <div class="hint">Shown as the YouTube title (max 100). Instagram, Facebook and TikTok use the description below; the title is also your job name here.</div>
+            </div>
+          </div>
 
-          <label class="field-label">Description / Caption<span class="counter" id="descCount">0 characters</span></label>
-          <textarea id="desc" aria-label="Description / Caption" placeholder="A little reminder that everything happens at the right time."></textarea>
+          <div class="frow">
+            <label class="field-label" for="desc">Description / Caption</label>
+            <div class="fcol">
+              <div class="inwrap ta"><textarea id="desc" aria-label="Description / Caption" placeholder="A little reminder that everything happens at the right time."></textarea><span class="counter" id="descCount">0 characters</span></div>
+            </div>
+          </div>
 
-          <label class="field-label">Tags (comma separated)<span class="counter" id="tagCount">0 hashtags</span></label>
-          <input type="text" id="tags" aria-label="Tags" placeholder="love, motivation, life, quotes, inspiration">
-          <div class="hint">We'll automatically convert these to hashtags.</div>
+          <div class="frow">
+            <label class="field-label" for="tags">Tags <span class="lbl-sub">(comma separated)</span></label>
+            <div class="fcol">
+              <div class="inwrap"><input type="text" id="tags" aria-label="Tags" placeholder="love, motivation, life, quotes, inspiration"><span class="counter" id="tagCount">0 hashtags</span></div>
+              <div class="hint">We'll automatically convert these to hashtags.</div>
+            </div>
+          </div>
 
-          <label class="field-label">Post to</label>
-          <div class="plat-grid" id="platGrid">
-            <label class="plat-chip on"><input type="checkbox" name="p" value="youtube" checked><span class="badge" style="background:var(--yt)">▶</span>YouTube<span class="tick">✓</span></label>
-            <label class="plat-chip on"><input type="checkbox" name="p" value="instagram" checked><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span>Instagram<span class="tick">✓</span></label>
-            <label class="plat-chip on"><input type="checkbox" name="p" value="facebook" checked><span class="badge" style="background:var(--fb)">f</span>Facebook<span class="tick">✓</span></label>
-            <label class="plat-chip on"><input type="checkbox" name="p" value="tiktok" checked><span class="badge" style="background:var(--tt)">♪</span>TikTok<span class="tick">✓</span></label>
+          <div class="frow">
+            <span class="field-label">Post to</span>
+            <div class="fcol">
+              <div class="plat-grid" id="platGrid">
+                          <label class="plat-chip on"><input type="checkbox" name="p" value="youtube" checked><span class="badge" style="background:var(--yt)">▶</span>YouTube<span class="tick">✓</span></label>
+                          <label class="plat-chip on"><input type="checkbox" name="p" value="instagram" checked><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">◎</span>Instagram<span class="tick">✓</span></label>
+                          <label class="plat-chip on"><input type="checkbox" name="p" value="facebook" checked><span class="badge" style="background:var(--fb)">f</span>Facebook<span class="tick">✓</span></label>
+                          <label class="plat-chip on"><input type="checkbox" name="p" value="tiktok" checked><span class="badge" style="background:var(--tt)">♪</span>TikTok<span class="tick">✓</span></label>
+                        </div>
+            </div>
           </div>
 
           <details id="accountOptions">
@@ -858,8 +1002,7 @@
             <input type="text" id="facebookAccount" placeholder="Exact Page name">
           </details>
           <div id="mfkGroup">
-            <label class="field-label" style="margin-top:16px">Made for kids? (YouTube) <span class="req">*</span></label>
-            <div class="hint" style="margin-top:0">This helps YouTube apply the right restrictions. Required when posting to YouTube.</div>
+            <div class="mfk-head"><span class="yt-ic">&#9654;</span><div><b>Made for kids? (YouTube) <span class="req">*</span></b><div class="hint" style="margin-top:2px">This helps YouTube apply the right restrictions. Required when posting to YouTube.</div></div></div>
             <div class="choice-grid">
               <label class="choice-card"><input type="radio" name="mfk" value="true" required><span class="t">Yes, it's made for kids</span>
                 <div class="d">Features like personalized ads and notifications won't be available.</div></label>
@@ -868,27 +1011,33 @@
             </div>
           </div>
 
-          <div class="row chk-row" style="margin-top:16px">
+          <div class="chk-row story-row">
             <input type="checkbox" id="story">
-            <span><label for="story" class="t">Also share to story</label> <span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3));width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">◎</span> <span class="badge" style="background:var(--fb);width:16px;height:16px;font-size:9px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;color:#fff">f</span><br><span class="d">Share this Reel to your Instagram and Facebook stories too.</span></span>
+            <span class="two-ic"><span class="badge" style="background:linear-gradient(135deg,var(--ig1),var(--ig2),var(--ig3))">&#9678;</span><span class="badge" style="background:var(--fb)">f</span></span>
+            <span><label for="story" class="t">Also share to story (Instagram &amp; Facebook)</label><div class="d">Share this video to your Instagram and Facebook stories.</div></span>
           </div>
 
-          <label class="field-label" style="margin-top:16px">Publish timing</label>
-          <div class="choice-grid">
-            <label class="choice-card" id="modeNowCard"><input type="radio" name="mode" value="now"><span class="t">Post now</span>
+          <div class="frow timing-row">
+          <span class="field-label">Publish timing</span>
+          <div class="choice-grid fcol">
+            <label class="choice-card" id="modeNowCard"><input type="radio" name="mode" value="now"><span class="ci"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5"/><path d="M21 3l-6.5 18-4-7.5L3 9.5z"/></svg></span><span class="t">Post now</span>
               <div class="d">Publish immediately after processing.</div></label>
-            <label class="choice-card on" id="modeSchedCard"><input type="radio" name="mode" value="schedule" checked><span class="t">Schedule for later</span>
-              <div class="d">Pick a date and time.</div>
-              <div id="scheduleHint" class="hint" role="status"></div><div class="schedule-fields"><input type="datetime-local" id="when" aria-label="Publish date and time"></div>
+            <label class="choice-card on" id="modeSchedCard"><input type="radio" name="mode" value="schedule" checked><span class="ci"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg></span><span class="t">Schedule for later</span>
+              <div class="d">Select a date and time.</div>
+              <div class="schedule-fields"><input type="datetime-local" id="when" aria-label="Publish date and time"></div>
             </label>
+            <div id="scheduleHint" class="hint" role="status"></div>
+          </div>
           </div>
 
-          <div class="row chk-row" style="margin-top:16px">
-            <input type="checkbox" id="dry">
-            <span><span class="t">🧪 Preview only (dry run)</span><br><span class="d">Fill in every platform's form without pressing the final publish/schedule button.</span></span>
+          <div class="submit-row">
+            <div class="chk-row dry-row">
+              <input type="checkbox" id="dry">
+              <span class="dry-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 3h5M10.5 3v6.2L5 19a1.6 1.6 0 001.4 2.4h11.2A1.6 1.6 0 0019 19l-5.5-9.8V3"/><path d="M7.5 15h9"/></svg></span>
+              <span><span class="t">Preview only (dry run)</span><div class="d">Validate your post without actually publishing.</div></span>
+            </div>
+            <button type="submit" id="go"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10.5 13.5"/><path d="M21 3l-6.5 18-4-7.5L3 9.5z"/></svg><span id="goLabel">Schedule Post</span></button>
           </div>
-
-          <button type="submit" id="go">📤 <span id="goLabel">Schedule</span></button>
           <div id="msg" role="status" aria-live="polite"></div>
         </form>
       </div>
@@ -995,6 +1144,7 @@ window.fetch = async (url, options = {}) => {
     currentUser = null;
     document.getElementById('signIn').hidden = false;
     document.getElementById('signOut').hidden = true;
+    document.getElementById('acctMenu').hidden = true;
     if (options.method && options.method.toUpperCase() !== 'GET') promptSignIn();
   }
   return response;
@@ -1003,6 +1153,7 @@ const authReady = originalFetch('/api/auth/me').then(r => r.ok ? r.json() : null
   currentUser = user;
   document.getElementById('signIn').hidden = !!user;
   document.getElementById('signOut').hidden = !user;
+  document.getElementById('acctMenu').hidden = !user;
   document.getElementById('signedInEmail').textContent = '';
   if (!user) {
     for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
@@ -1010,6 +1161,13 @@ const authReady = originalFetch('/api/auth/me').then(r => r.ok ? r.json() : null
     document.getElementById('canvasOverlay').textContent = 'Your posting progress will appear here.';
   }
 });
+(() => {
+  const btn = document.getElementById('acctBtn'), drop = document.getElementById('acctDrop');
+  const close = () => { drop.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+  btn.addEventListener('click', e => { e.stopPropagation(); drop.hidden = !drop.hidden; btn.setAttribute('aria-expanded', String(!drop.hidden)); });
+  document.addEventListener('click', e => { if (!drop.contains(e.target)) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+})();
 document.getElementById('signOut').onclick = async () => {
   const response = await fetch('/api/auth/logout', {method: 'POST'});
   if (response.ok) location.replace('/');
@@ -1037,6 +1195,10 @@ document.addEventListener('click', async e => {
 let chromeIsRunning = false;
 let hostedPending = false;
 let manualSignInActive = false;
+function setReady(ok, text) {
+  document.getElementById('allReady').classList.toggle('ok', !!ok);
+  document.getElementById('allReadyText').textContent = text;
+}
 async function refreshAccounts() {
   await authReady;
   if (!currentUser) return;
@@ -1055,7 +1217,8 @@ async function refreshAccounts() {
       document.getElementById('browserOff').style.display = 'none';
       document.getElementById('go').disabled = !h.online;
       document.getElementById('browserMessage').textContent = h.online ? '' : (h.paired ? 'Your helper is offline. Start it on your computer to post.' : 'Pair a helper below to start posting.');
-      const setH = (dotId, textId, on) => { document.getElementById(dotId).classList.toggle('on', !!on); document.getElementById(textId).textContent = h.online ? (on ? 'Session detected' : 'Not connected') : 'helper offline'; };
+      const setH = (dotId, textId, on) => { document.getElementById(dotId).classList.toggle('on', !!on); document.getElementById(textId).textContent = h.online ? (on ? 'Connected' : 'Not connected') : 'helper offline'; };
+      setReady(h.online && a.youtube && a.meta && a.tiktok, !h.paired ? 'Pair a helper to start' : !h.online ? 'Helper is offline' : (a.youtube && a.meta && a.tiktok) ? 'All systems ready' : 'Connect the missing platforms');
       setH('d-youtube', 't-youtube', a.youtube); setH('d-meta1', 't-meta1', a.meta); setH('d-meta2', 't-meta2', a.meta); setH('d-tiktok', 't-tiktok', a.tiktok);
       return;
     }
@@ -1090,10 +1253,16 @@ async function refreshAccounts() {
       document.getElementById(dotId).classList.toggle('on', !!on);
       document.getElementById(textId).textContent = chromeIsRunning ? (on ? onText : offText) : 'browser off';
     };
-    set('d-youtube', 't-youtube', a.youtube, 'Session detected', 'Not connected');
-    set('d-meta1', 't-meta1', a.meta, 'Session detected', 'Not connected');
-    set('d-meta2', 't-meta2', a.meta, 'Session detected', 'Not connected');
-    set('d-tiktok', 't-tiktok', a.tiktok, 'Session detected', 'Not connected');
+    set('d-youtube', 't-youtube', a.youtube, 'Connected', 'Not connected');
+    set('d-meta1', 't-meta1', a.meta, 'Connected', 'Not connected');
+    set('d-meta2', 't-meta2', a.meta, 'Connected', 'Not connected');
+    set('d-tiktok', 't-tiktok', a.tiktok, 'Connected', 'Not connected');
+    for (const btn of document.querySelectorAll('[data-connect]')) {
+      const key = btn.dataset.connect === 'youtube' ? 'youtube' : btn.dataset.connect === 'tiktok' ? 'tiktok' : 'meta';
+      btn.hidden = !!(chromeIsRunning && a[key]);
+    }
+    const allOn = chromeIsRunning && a.youtube && a.meta && a.tiktok;
+    setReady(allOn, allOn ? 'All systems ready' : chromeIsRunning ? 'Connect the missing platforms' : 'Browser is off');
   } catch (e) {}
 }
 setInterval(refreshAccounts, 6000); refreshAccounts();
@@ -1200,7 +1369,7 @@ function syncMode() {
   document.getElementById('modeNowCard').classList.toggle('on', now);
   document.getElementById('modeSchedCard').classList.toggle('on', !now);
   whenEl.disabled = now; whenEl.closest('.schedule-fields').style.opacity = now ? .4 : 1;
-  document.getElementById('goLabel').textContent = now ? 'Post Now' : 'Schedule';
+  document.getElementById('goLabel').textContent = now ? 'Post Now' : 'Schedule Post';
 }
 document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', syncMode));
 
