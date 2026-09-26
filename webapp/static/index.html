@@ -680,12 +680,22 @@
     main.live-focus #jobResults { order:3; }
     main.live-focus #newPostBtn { padding:6px 12px; white-space:nowrap; }
     main.live-focus #platTabs, main.live-focus #jobHistoryHint, main.live-focus label[for=jobSelect], main.live-focus #jobSelect { display:none; }
-    main.live-focus .journey { order:2; margin-top:4px; padding:52px 10px 6px; }
-    main.live-focus .journey .jsay { margin-top:8px; }
-    main.live-focus .journey .jn .orb { width:40px; height:40px; }
-    main.live-focus .journey .jline { top:20px; }
+    main.live-focus .journey { order:2; margin-top:4px; padding:40px 10px 4px; }
+    main.live-focus .journey .jsay { margin-top:4px; font-size:13px; min-height:18px; }
+    main.live-focus .journey .jn { gap:3px; }
+    main.live-focus .journey .jn .orb { width:32px; height:32px; font-size:14px; }
+    main.live-focus .journey .jn .mark { width:16px; height:16px; font-size:10px; }
+    main.live-focus .journey .jline { top:16px; }
+    main.live-focus .journey .jclip { width:32px; height:38px; top:-22px; }
+    main.live-focus .journey .jclip .card { font-size:16px; }
     main.live-focus .browser-frame { order:3; margin-top:6px; }
-    main.live-focus .canvas-wrap { width:100%; aspect-ratio:auto; height:calc(100vh - 318px); min-height:260px; background:#05040c; }
+    main.live-focus .browser-frame { position:relative; border-radius:14px; overflow:hidden; }
+    main.live-focus .browser-titlebar { position:absolute; top:8px; left:8px; z-index:4; height:auto; padding:3px 10px; border-radius:8px; background:rgba(8,6,20,.6); backdrop-filter:blur(6px); }
+    main.live-focus .browser-titlebar .tl { display:none; }
+    main.live-focus .canvas-wrap { width:100%; aspect-ratio:auto; height:calc(100vh - 262px); min-height:240px; background:#05040c; }
+    main.live-focus .canvas-wrap canvas { object-fit:cover; object-position:50% 30%; }
+    main.live-focus.fit .canvas-wrap canvas { object-fit:contain; }
+    main.live-focus #fitBtn { display:block; }
     main.live-focus #jobResults { margin-top:8px; }
     main.live-focus .steps-log-grid { order:5; grid-template-columns:minmax(0,1fr) !important; margin-top:10px; }
     main.live-focus .steps-list { max-height:240px; overflow:auto; }
@@ -711,6 +721,9 @@
   #cancelBtn:hover:not(:disabled) { background:rgba(229,72,77,.24); }
   #cancelBtn:disabled { opacity:.6; cursor:default; }
   #cancelBtn[hidden] { display:none !important; }
+  #fitBtn { display:none; position:absolute; z-index:4; top:8px; right:96px; padding:3px 10px; border-radius:8px; border:1px solid rgba(255,255,255,.3); background:rgba(8,6,20,.6); color:#fff; font:inherit; font-size:11px; cursor:pointer; }
+  #fitBtn:hover { background:rgba(8,6,20,.85); }
+  main.live-focus .view-only-tag { background:rgba(8,6,20,.6) !important; color:#fff !important; border-color:rgba(255,255,255,.3) !important; backdrop-filter:blur(6px); }
 </style>
 </head>
 <body>
@@ -923,6 +936,7 @@
         <canvas id="screen" width="1100" height="700"></canvas>
         <div class="overlay" id="canvasOverlay">No automation running. Submit the form to watch it work here.</div>
         <div class="view-only-tag">View only</div>
+        <button type="button" id="fitBtn" title="Switch between filling the space and showing the whole page">Show whole page</button>
       </div>
     </div>
 
@@ -1305,6 +1319,10 @@ document.getElementById('cancelBtn').addEventListener('click', async e => {
   btn.disabled = true; btn.textContent = 'Cancelling\u2026';
   try { const r = await fetch(`/api/jobs/${btn.dataset.job}/cancel`, { method: 'POST' }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Could not cancel.'); refreshJobs(); }
   catch (err) { btn.disabled = false; btn.textContent = 'Cancel upload'; alert(err.message); }
+});
+document.getElementById('fitBtn').addEventListener('click', e => {
+  const on = document.querySelector('main').classList.toggle('fit');
+  e.currentTarget.textContent = on ? 'Fill the space' : 'Show whole page';
 });
 document.getElementById('newPostBtn').addEventListener('click', () => { focusJobId = null; document.querySelector('main').classList.remove('live-focus'); window.scrollTo({ top: 0 }); });
 
