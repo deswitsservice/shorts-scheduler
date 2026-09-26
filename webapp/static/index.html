@@ -687,6 +687,14 @@
   .retry-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink2,#5b5473); }
   .retry-btn { padding:8px 16px; border-radius:10px; border:0; cursor:pointer; font:inherit; font-weight:700; color:#fff; background:linear-gradient(135deg,#6d4dff,#c04fd6); box-shadow:0 6px 16px -8px rgba(109,77,255,.8); }
   .retry-btn:disabled { opacity:.6; cursor:default; }
+  .maker-sum { display:flex; align-items:center; gap:12px; cursor:pointer; list-style:none; }
+  .maker-sum::-webkit-details-marker { display:none; }
+  .maker-sum .ic { width:38px; height:38px; border-radius:12px; display:grid; place-items:center; font-size:18px; }
+  .maker-sum small { display:block; font-size:12.5px; opacity:.75; margin-top:2px; }
+  #makerCard[open] .maker-sum { margin-bottom:12px; }
+  .maker-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px; }
+  #mkMsg.err { color:#e5484d; }
+  html[data-theme="dark"] #mkMsg.err { color:#ff9aa2; }
 </style>
 </head>
 <body>
@@ -738,6 +746,25 @@
         <button type="button" id="startBrowserBtn">▶ Start posting browser</button>
       </div>
     </div>
+
+    <details class="card" id="makerCard">
+      <summary class="maker-sum"><span class="ic" style="background:#eef0ff">🎬</span><span><b>Make a video</b><small>Script + images + your voice recording &rarr; a captioned short</small></span></summary>
+      <form id="makerForm" class="card-body">
+        <label class="field-label" for="mkScript">Script <span class="req">*</span></label>
+        <textarea id="mkScript" rows="7" placeholder="Write or paste your script. Leave a blank line between scenes: each scene gets one image."></textarea>
+        <div class="hint" id="mkSceneHint">0 scenes</div>
+        <label class="field-label" for="mkImages">Scene images (one per scene, in order) <span class="req">*</span></label>
+        <input type="file" id="mkImages" accept="image/png,image/jpeg,image/webp" multiple>
+        <label class="field-label" for="mkVoice">Voice recording <span class="req">*</span></label>
+        <input type="file" id="mkVoice" accept="audio/*">
+        <div class="hint">The recording must say your script. We listen to it first and stop if it doesn&rsquo;t match, so a wrong file never turns into a video.</div>
+        <div class="maker-row"><button type="submit" id="mkGo" class="retry-btn">Make video</button><span id="mkMsg" role="status" aria-live="polite"></span></div>
+        <div id="mkResult" hidden>
+          <video id="mkPreview" controls playsinline style="width:100%;max-width:280px;border-radius:12px;margin-top:12px"></video>
+          <div class="maker-row"><button type="button" id="mkUse" class="retry-btn">Use this video below</button><a id="mkDownload" class="hint" download="video.mp4">Download</a></div>
+        </div>
+      </form>
+    </details>
 
     <div class="card">
       <div class="card-head">
@@ -1220,6 +1247,45 @@ document.getElementById('form').addEventListener('submit', async e => {
 });
 
 document.getElementById('newPostBtn').addEventListener('click', () => { focusJobId = null; document.querySelector('main').classList.remove('live-focus'); window.scrollTo({ top: 0 }); });
+
+
+/* ---------- video maker ---------- */
+(() => {
+  const $ = id => document.getElementById(id);
+  const sceneCount = () => $('mkScript').value.split(/\n\s*\n/).filter(x => x.trim()).length;
+  const hint = () => { const n = sceneCount(), m = $('mkImages').files.length;
+    $('mkSceneHint').textContent = `${n} scene${n === 1 ? '' : 's'} in the script · ${m} image${m === 1 ? '' : 's'} chosen` + (n && m && n !== m ? ' \u2014 these need to match' : ''); };
+  $('mkScript').addEventListener('input', hint); $('mkImages').addEventListener('change', hint); hint();
+  let videoUrl = null;
+  $('makerForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const msg = $('mkMsg'); msg.classList.remove('err'); $('mkResult').hidden = true;
+    if (!await requireSignIn()) return;
+    if (!$('mkScript').value.trim() || !$('mkImages').files.length || !$('mkVoice').files.length) { msg.textContent = 'Add a script, the images and the voice recording.'; msg.classList.add('err'); return; }
+    const fd = new FormData(); fd.append('script', $('mkScript').value);
+    fd.append('voice', $('mkVoice').files[0]); [...$('mkImages').files].forEach(f => fd.append('images', f));
+    $('mkGo').disabled = true; msg.textContent = 'Uploading\u2026';
+    try {
+      const r = await fetch('/api/video/create', { method: 'POST', body: fd }); const b = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(b.error || 'Something went wrong.');
+      for (;;) {
+        await new Promise(res => setTimeout(res, 2500));
+        const st = await (await fetch('/api/video/' + b.id)).json();
+        if (st.state === 'running') { msg.textContent = st.step + '\u2026 (this takes a few minutes)'; continue; }
+        if (st.state === 'failed') throw new Error(st.error || 'The video could not be built.');
+        videoUrl = st.file_url; $('mkPreview').src = videoUrl; $('mkDownload').href = videoUrl; $('mkResult').hidden = false;
+        msg.textContent = `Done \u2014 the recording matched your script (${Math.round(st.report.match * 100)}%).`; break;
+      }
+    } catch (err) { msg.textContent = err.message; msg.classList.add('err'); }
+    $('mkGo').disabled = false;
+  });
+  $('mkUse').addEventListener('click', async () => {
+    const blob = await (await fetch(videoUrl)).blob(), dt = new DataTransfer();
+    dt.items.add(new File([blob], 'video.mp4', { type: 'video/mp4' })); $('file').files = dt.files;
+    $('file').dispatchEvent(new Event('change', { bubbles: true }));
+    $('file').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+})();
 
 /* ---------- live browser view (read-only) ---------- */
 const canvas = document.getElementById('screen'), cctx = canvas.getContext('2d'), canvasWrap = document.getElementById('canvasWrap');
