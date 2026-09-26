@@ -61,3 +61,19 @@ The app closes the automated browser and opens the same private profile in a vis
 During direct sign-in, account cookie inspection, both browser WebSockets, and posting are blocked. A page reload still shows the pending sign-in state. App shutdown closes this test browser; normal profile persistence is retained. The endpoint requires authentication, same-origin mutation headers, explicit configuration, a loopback client, and a localhost Host. Do not enable it behind a hosted reverse proxy or on a shared server.
 
 `python3 tests/check_manual_signin.py` verifies the no-CDP process, rejects early resume, and checks that a cookie set by a local fixture survives into the resumed automation profile. It does **not** test Google account acceptance. A user must complete that validation manually; there is no guarantee this resolves Google's block. Hosted users still need an isolated remote-desktop sign-in transport; this local option is the validation step before building it.
+
+## Helper mode ("your browser, our dashboard")
+
+Set `SHORTS_HELPER_MODE=1`. The server then never runs Chrome for users. Posting happens in a small helper program on each
+user's own computer, using their own signed-in Chrome; platform logins never reach the server.
+
+- Website: **Accounts Status → Pair a helper** shows a one-time code (10 minutes). Uploads are refused while no helper is online.
+- Helper (macOS today): `python3 helper/shorts_helper.py pair --server URL --code CODE`, then `login` once, then `run`.
+- The helper polls `/api/helper-agent/poll` with a per-helper bearer token (stored hashed, revocable via `/api/helper/revoke/{id}`), downloads
+  the video, runs the same posting engine, and syncs progress to `/api/helper-agent/jobs/{id}/sync`.
+- Jobs are persisted in the accounts database (`job_history`) and survive server restarts. A claimed job that stops reporting for 5 minutes is
+  handed to the next poll (only platforms not already `done`).
+- Agent routes are exempt from the browser Origin/CSRF check because they use bearer tokens, never cookies.
+
+Not done yet: Windows/Linux Chrome launching (`bot.start_chrome` uses macOS `open`), a packaged installer with auto-update, prompts for
+platform verification codes, and hosting/billing.
