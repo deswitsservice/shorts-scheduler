@@ -12,6 +12,17 @@ import time
 import urllib.request
 
 
+def _window_size():
+    """Automation Chrome window as (w, h). Wider than tall so the in-app live view (a wide stage) shows a bigger picture."""
+    try:
+        w, h = (int(x) for x in os.environ.get('SHORTS_WINDOW_SIZE', '1800x900').lower().split('x'))
+        if 800 <= w <= 3840 and 600 <= h <= 2160:
+            return w, h
+    except ValueError:
+        pass
+    return 1800, 900
+
+
 class BrowserWorker:
     def __init__(self, profile, capacity, on_ready):
         self.profile = Path(profile)
@@ -86,7 +97,7 @@ class BrowserWorker:
                     read_fd, write_fd = os.pipe()
                     try:
                         self.display = subprocess.Popen([xvfb, '-displayfd', str(write_fd), '-screen', '0',
-                                                         '1280x900x24', '-nolisten', 'tcp'],
+                                                         '%dx%dx24' % _window_size(), '-nolisten', 'tcp'],
                                                         pass_fds=(write_fd,), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         os.close(write_fd)
                         write_fd = None
@@ -102,7 +113,7 @@ class BrowserWorker:
                             os.close(write_fd)
                 flags = [f'--user-data-dir={self.profile}', '--remote-debugging-address=127.0.0.1',
                          '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
-                         '--disable-session-crashed-bubble', '--window-size=1200,850',
+                         '--disable-session-crashed-bubble', '--window-size=%d,%d' % _window_size(),
                          '--window-position=-2400,-2400', 'about:blank']
                 if _manual_url is not None:
                     flags = [f'--user-data-dir={self.profile}', '--no-first-run', '--no-default-browser-check',
