@@ -241,6 +241,7 @@ async def schedule(
     dry: str = Form("false"),
     story: str = Form("false"),
     thumb_title: str = Form("false"),
+    ai_label: str = Form("false"),
     youtube_channel: str = Form(""),
     instagram_account: str = Form(""),
     facebook_account: str = Form(""),
@@ -302,7 +303,7 @@ async def schedule(
     vid = {"id": jid, "file": path, "title": title.strip(), "description": desc,
            "schedule": None if publish_now else when.replace("T", " ")[:16], "publish_now": publish_now,
            "made_for_kids": made_for_kids == "true", "story": story == "true", "thumbnail": thumb_path,
-           "thumb_title": thumb_title == "true", "youtube_channel": youtube_channel.strip(),
+           "thumb_title": thumb_title == "true", "ai_label": ai_label == "true", "youtube_channel": youtube_channel.strip(),
            "instagram_account": instagram_account.strip(), "facebook_account": facebook_account.strip(), "accounts": {}}
     job = {"id": jid, "title": vid["title"], "when": "Now" if publish_now else vid["schedule"], "platforms": plats,
            "dry": dry == "true", "vid": vid, "accounts": vid["accounts"], "steps": {p: {"state": "queued", "log": []} for p in plats},
