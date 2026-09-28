@@ -69,6 +69,14 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(Image.open(io.BytesIO(image.content)).size, (1080, 1920))
         self.submit.assert_called_once()
 
+    def test_ai_label_is_off_unless_asked_for(self):
+        job = server.jobs[self.request().json()['id']]
+        self.addCleanup(lambda: Path(job['vid']['thumbnail']).unlink(missing_ok=True))
+        self.assertFalse(job['vid']['ai_label'])
+        job = server.jobs[self.request(ai_label='true').json()['id']]
+        self.addCleanup(lambda: Path(job['vid']['thumbnail']).unlink(missing_ok=True))
+        self.assertTrue(job['vid']['ai_label'])
+
     def test_invalid_mode_never_queues(self):
         self.assertEqual(self.request(mode='invalid').status_code, 400)
         self.submit.assert_not_called()

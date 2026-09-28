@@ -286,7 +286,11 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             mfk_name = "VIDEO_MADE_FOR_KIDS_MFK" if vid.get("made_for_kids") else "VIDEO_MADE_FOR_KIDS_NOT_MFK"
             pg.locator(f"[name={mfk_name}]").first.click()
             pg.locator("#toggle-button").click()
-            pg.locator("[name=VIDEO_HAS_ALTERED_CONTENT_YES]").first.click()
+            altered = pg.locator("[name=VIDEO_HAS_ALTERED_CONTENT_%s]" % ("YES" if vid.get("ai_label") else "NO"))
+            if altered.count():
+                altered.first.click()
+            elif vid.get("ai_label"):
+                sys.exit("youtube: could not find the altered/AI content option")
             for _ in range(3):
                 pg.locator("#next-button").click()
                 pg.wait_for_timeout(1500)
@@ -545,17 +549,18 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
             if vals[0] != f"{when:%H:%M}|false" or not vals[1].startswith(f"{when:%Y-%m-%d}"):
                 sys.exit(f"TikTok schedule fields read {vals}, wanted {when:%Y-%m-%d %H:%M}")
             pg.mouse.click(700, 300); pg.wait_for_timeout(500)
-        on_step("Turning on AI-generated content label")
-        pg.get_by_text("Show more").first.scroll_into_view_if_needed(); pg.get_by_text("Show more").first.click(); pg.wait_for_timeout(1000)
-        ai = pg.locator("text=AI-generated content").first.locator("xpath=following::input[@type='checkbox'][1]")
-        ai.scroll_into_view_if_needed(); ai.click(force=True); pg.wait_for_timeout(1200)
-        try:
-            pg.get_by_role("button", name="Turn on").click(timeout=4000)
-            pg.wait_for_timeout(1000)
-        except Exception:
-            pass
-        if not ai.is_checked():
-            sys.exit("AI-generated content label did not turn on")
+        if vid.get("ai_label"):
+            on_step("Turning on AI-generated content label")
+            pg.get_by_text("Show more").first.scroll_into_view_if_needed(); pg.get_by_text("Show more").first.click(); pg.wait_for_timeout(1000)
+            ai = pg.locator("text=AI-generated content").first.locator("xpath=following::input[@type='checkbox'][1]")
+            ai.scroll_into_view_if_needed(); ai.click(force=True); pg.wait_for_timeout(1200)
+            try:
+                pg.get_by_role("button", name="Turn on").click(timeout=4000)
+                pg.wait_for_timeout(1000)
+            except Exception:
+                pass
+            if not ai.is_checked():
+                sys.exit("AI-generated content label did not turn on")
         on_step("Running TikTok's content checks")
         pg.wait_for_function("!document.body.innerText.includes('Checks can only start after the file is uploaded')", timeout=300000)
         # The button is labeled "Post" for publish_now, "Schedule" otherwise -- this was hardcoded to
@@ -568,7 +573,7 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
             pg.wait_for_timeout(1000)
         pg.mouse.move(600, 300); pg.mouse.wheel(0, 3000); pg.wait_for_timeout(800)
         pg.screenshot(path=os.path.join(HERE, "shots", f"tiktok_{vid['id']}.png"))
-        print(f"tiktok: ready to {'post now' if now else f'post at {when:%b %-d %-I:%M %p}'}, AI label on")
+        print(f"tiktok: ready to {'post now' if now else f'post at {when:%b %-d %-I:%M %p}'}, AI label {'on' if vid.get('ai_label') else 'off'}")
         if commit:
             on_step("Posting video" if now else "Scheduling video")
             btn_name = "Post" if now else "Schedule"

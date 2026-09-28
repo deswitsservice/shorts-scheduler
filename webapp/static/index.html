@@ -1021,6 +1021,11 @@
             <span><label for="story" class="t">Also share to story (Instagram &amp; Facebook)</label><div class="d">Share this video to your Instagram and Facebook stories.</div></span>
           </div>
 
+          <div class="chk-row story-row">
+            <input type="checkbox" id="aiLabel">
+            <span><label for="aiLabel" class="t">Label as AI-generated (YouTube &amp; TikTok)</label><div class="d">Off by default. Turn it on if a platform asks for it or the video uses realistic synthetic media.</div></span>
+          </div>
+
           <div class="frow timing-row">
           <span class="field-label">Publish timing</span>
           <div class="choice-grid fcol">
@@ -1473,6 +1478,7 @@ document.getElementById('form').addEventListener('submit', async e => {
   if (mode === 'schedule') fd.append('when', whenEl.value);
   if (mfkEl) fd.append('made_for_kids', mfkEl.value);
   fd.append('story', document.getElementById('story').checked ? 'true' : 'false');
+  fd.append('ai_label', document.getElementById('aiLabel').checked ? 'true' : 'false');
   fd.append('dry', document.getElementById('dry').checked ? 'true' : 'false');
   const btn = document.getElementById('go'); btn.disabled = true; msg.textContent = 'Uploading video to the server…';
   try {
