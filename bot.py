@@ -6,16 +6,19 @@
 import sys, os, re, glob, subprocess, time, urllib.request, json, datetime
 from playwright.sync_api import sync_playwright
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+# Writable data (screenshots, the default Chrome profile). The installed helper points this at ~/.shorts-everywhere.
+HERE = os.environ.get("SHORTS_DATA_DIR") or os.path.dirname(os.path.abspath(__file__))
 PROFILE = os.environ.get("BOT_PROFILE") or os.path.join(HERE, "chrome_profile")
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9222
 ACTIVE_TARGET_ID = None  # Explicit tab identity for the in-app viewer; never inferred from window focus.
 SITES = ["https://studio.youtube.com", "https://www.tiktok.com/tiktokstudio", "https://business.facebook.com"]
-SUPPORT_URL = "ko-fi.com/amouraquotes"
-SUPPORT_LINE = f"☕ Support my videos: https://{SUPPORT_URL}"  # YouTube only links it with the scheme
-# YouTube channels that can't carry outside links in descriptions until they're phone-verified (Cold Case Chronicles).
-YT_NO_LINK_CHANNELS = {"UCg85UGSCLnoTM48RggRJmkQ"}
+# Optional support link (e.g. "ko-fi.com/amouraquotes") added to descriptions. A per-user setting: empty means no
+# link, so a public helper install never advertises someone else's page.
+SUPPORT_URL = os.environ.get("SHORTS_SUPPORT_URL", "").strip().removeprefix("https://").removeprefix("http://")
+SUPPORT_LINE = f"☕ Support my videos: https://{SUPPORT_URL}" if SUPPORT_URL else ""  # YouTube only links it with the scheme
+# YouTube channels that can't carry outside links in descriptions until they're phone-verified (comma-separated IDs).
+YT_NO_LINK_CHANNELS = {c.strip() for c in os.environ.get("SHORTS_YT_NO_LINK_CHANNELS", "").split(",") if c.strip()}
 
 
 def attach_local_file(pg, target, path):
@@ -40,7 +43,7 @@ def with_support_link(vid):
     """Description with the Ko-fi line added just above the trailing hashtags. Skipped for made-for-kids videos
     (YouTube doesn't allow links to outside sites on kids content) and when the link is already there."""
     desc = vid.get("description", "")
-    if vid.get("made_for_kids") or SUPPORT_URL in desc:
+    if not SUPPORT_URL or vid.get("made_for_kids") or SUPPORT_URL in desc:
         return desc
     m = re.search(r"(?:^|\n)[ \t]*((?:#\w+[ \t]*)+)\s*$", desc)
     if not m:
@@ -50,6 +53,8 @@ def with_support_link(vid):
 
 def without_support_link(desc):
     """Undo with_support_link (the web app adds it before trimming, for every platform)."""
+    if not SUPPORT_LINE:
+        return desc
     return re.sub(r"\n*" + re.escape(SUPPORT_LINE) + r"\n*", "\n\n", desc).strip()
 
 
@@ -126,6 +131,47 @@ def start_chrome(urls=(), background=True):
         if chrome_running():
             break
         time.sleep(0.5)
+
+
+def _set_window_bounds(bounds, url=None):
+    """Move the automation Chrome's window (optionally opening `url` in a new tab first). Returns the new tab."""
+    with sync_playwright() as p:
+        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
+        ctx = b.contexts[0]
+        pg = ctx.new_page() if url else (ctx.pages[0] if ctx.pages else ctx.new_page())
+        session = ctx.new_cdp_session(pg)
+        try:
+            target_id = session.send("Target.getTargetInfo")["targetInfo"]["targetId"]
+            window_id = session.send("Browser.getWindowForTarget", {"targetId": target_id})["windowId"]
+            session.send("Browser.setWindowBounds", {"windowId": window_id, "bounds": {"windowState": "normal"}})
+            session.send("Browser.setWindowBounds", {"windowId": window_id, "bounds": bounds})
+        finally:
+            session.detach()
+        if url:
+            try:
+                pg.goto(url, timeout=30000, wait_until="domcontentloaded")
+            except Exception:
+                pass  # a slow sign-in page still loads in the visible window; nothing to wait for here
+            pg.bring_to_front()
+
+
+def open_signin(url):
+    """Show the automation Chrome in front on `url` so the user signs in there directly, as in an ordinary browser
+    window (no streamed view). The same profile keeps the session for posting afterwards."""
+    if not chrome_running():
+        start_chrome([url], background=False)
+        if not chrome_running():
+            raise RuntimeError("Chrome did not start. Check that Google Chrome is installed in Applications.")
+        return
+    # No `open -a "Google Chrome"` to raise it: that would activate the user's own Chrome, not this separate instance.
+    _set_window_bounds({"left": 60, "top": 60}, url=url)
+
+
+def hide_signin():
+    """Send the window back off-screen once the user has finished signing in."""
+    if chrome_running():
+        _move_running_chrome_offscreen()
+        show_idle_screen()
 
 
 def login():

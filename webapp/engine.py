@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from playwright.async_api import async_playwright  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
-UPLOADS = os.path.join(HERE, "uploads")
+UPLOADS = os.path.join(os.environ["SHORTS_DATA_DIR"], "uploads") if os.environ.get("SHORTS_DATA_DIR") else os.path.join(HERE, "uploads")
 THUMBS = os.path.join(bot.HERE, "shots", "thumbs")
 os.makedirs(UPLOADS, exist_ok=True)
 CDP = f"http://127.0.0.1:{bot.PORT}"
