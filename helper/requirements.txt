@@ -1,0 +1,7 @@
+# Local helper (posting only). Playwright attaches to the user's installed Google Chrome over CDP, so no
+# `playwright install` browser download is needed. The video maker additionally needs ffmpeg and faster-whisper.
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart>=0.0.9
+pillow>=10
+playwright>=1.60

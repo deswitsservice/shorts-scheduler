@@ -879,6 +879,19 @@
 
 <main>
   <section>
+    <div class="card" id="helperInstall" hidden>
+      <h2>Install the free helper</h2>
+      <p class="hint">Shorts Everywhere posts from your own computer, with your own signed-in Chrome. Nothing about your videos or logins goes through this website. You install the helper once (Mac, with Google Chrome).</p>
+      <ol style="margin:10px 0;padding-left:20px;line-height:1.6">
+        <li>Open <b>Terminal</b> (press <kbd>⌘</kbd> + <kbd>Space</kbd>, type <i>Terminal</i>, press Return).</li>
+        <li>Paste this and press Return:
+          <pre id="installCmd" style="white-space:pre-wrap;word-break:break-all;margin:6px 0;padding:10px;border-radius:8px;background:rgba(120,100,190,.12);user-select:all">curl -fsSL https://minefoundation.org/install.sh | bash</pre>
+          <button type="button" class="pill-btn" id="installCopy">Copy</button></li>
+        <li>If Chrome asks to let this site <b>access other apps and services on this device</b> (or your local network), choose <b>Allow</b>.</li>
+      </ol>
+      <p class="hint">Using Safari? It can&rsquo;t reach the helper from this page; open <a href="http://127.0.0.1:8765/">127.0.0.1:8765</a> after installing.</p>
+      <button type="button" class="retry-btn" id="installRecheck">I&rsquo;ve installed it, check again</button>
+    </div>
     <div class="card" id="accounts">
       <div class="acc-top"><span class="acc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.3 2.3 4.7-5"/></svg></span><h2>Accounts Status</h2><span class="ready" id="allReady"><span class="dot"></span><span id="allReadyText">Checking…</span></span></div>
       <div class="accounts-row">
@@ -903,6 +916,10 @@
           <div class="hint">Then run <b>login</b> once to sign in to your platforms, and <b>run</b> to start posting. Keep it running while you use this page.</div>
         </div>
       </div>
+      <div id="localSignIn" hidden style="margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px">
+        <p class="hint" id="localSignInText"></p>
+        <button type="button" class="pill-btn" id="localSignInDone">Done signing in</button>
+      </div>
       <div id="manualSignIn" hidden style="margin-top:12px;padding:12px;background:#f4f7ff;border-radius:10px">
         <p class="hint">Google blocking in-app sign-in? Try signing in directly in Chrome on this Mac. This opens a separate window in front.</p>
         <button type="button" class="pill-btn" id="manualStart">Sign in to YouTube in Chrome</button>
@@ -918,16 +935,23 @@
     </div>
 
     <details class="card" id="makerCard">
-      <summary class="maker-sum"><span class="ic" style="background:#eef0ff">🎬</span><span><b>Make a video</b><small>Script + images + your voice recording &rarr; a captioned short</small></span></summary>
+      <summary class="maker-sum"><span class="ic" style="background:#eef0ff">🎬</span><span><b>Make a video</b><small>Your voice recording + images &rarr; a vertical short, with optional subtitles and music</small></span></summary>
       <form id="makerForm" class="card-body">
-        <label class="field-label" for="mkScript">Script <span class="req">*</span></label>
-        <textarea id="mkScript" rows="7" placeholder="Write or paste your script. Leave a blank line between scenes: each scene gets one image."></textarea>
-        <div class="hint" id="mkSceneHint">0 scenes</div>
-        <label class="field-label" for="mkImages">Scene images (one per scene, in order) <span class="req">*</span></label>
-        <input type="file" id="mkImages" accept="image/png,image/jpeg,image/webp" multiple>
         <label class="field-label" for="mkVoice">Voice recording <span class="req">*</span></label>
         <input type="file" id="mkVoice" accept="audio/*">
-        <div class="hint">The recording must say your script. We listen to it first and stop if it doesn&rsquo;t match, so a wrong file never turns into a video.</div>
+        <label class="field-label" for="mkImages">Images, in order <span class="req">*</span></label>
+        <input type="file" id="mkImages" accept="image/png,image/jpeg,image/webp" multiple>
+        <div class="hint" id="mkImageHint">Add as many as you like. They&rsquo;re spread evenly across the recording.</div>
+        <label class="field-label" for="mkScript">Script <span class="req" id="mkScriptReq">*</span></label>
+        <textarea id="mkScript" rows="7" placeholder="Write or paste what the recording says."></textarea>
+        <div class="chk-row">
+          <input type="checkbox" id="mkSubtitles" checked>
+          <span><label for="mkSubtitles" class="t">Generate subtitles</label><div class="d">Show the script on screen, timed to your voice. The recording has to say the script; we check before building.</div></span>
+        </div>
+        <div class="chk-row">
+          <input type="checkbox" id="mkMusic" checked>
+          <span><label for="mkMusic" class="t">Add background music</label><div class="d">Soft music under your voice, the same track we use for our shorts.</div></span>
+        </div>
         <div class="maker-row"><button type="submit" id="mkGo" class="retry-btn">Make video</button><span id="mkMsg" role="status" aria-live="polite"></span></div>
         <div id="mkResult" hidden>
           <video id="mkPreview" controls playsinline style="width:100%;max-width:280px;border-radius:12px;margin-top:12px"></video>
@@ -1145,11 +1169,17 @@ async function requireSignIn() {
   promptSignIn();
   return false;
 }
+// On minefoundation.org there is no server: this page talks to the helper running on the visitor's own computer.
+// Served by the helper itself (http://127.0.0.1:8765) or by the hosted server, requests stay same-origin.
+const HELPER = /(^|\.)minefoundation\.org$/.test(location.hostname) || new URLSearchParams(location.search).has('helper')
+  ? 'http://127.0.0.1:8765' : '';
+const api = url => HELPER && typeof url === 'string' && /^\/(api|uploads|thumbs|ws)\b/.test(url) ? HELPER + url : url;
+let helperMissing = false;
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}) => {
   const headers = new Headers(options.headers || {});
   if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) headers.set('X-Shorts-Request', '1');
-  const response = await originalFetch(url, {...options, headers});
+  const response = await originalFetch(api(url), {...options, headers});
   if (response.status === 401) {
     currentUser = null;
     document.getElementById('signIn').hidden = false;
@@ -1159,11 +1189,19 @@ window.fetch = async (url, options = {}) => {
   }
   return response;
 };
-const authReady = originalFetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null).then(user => {
+const authReady = originalFetch(api('/api/auth/me')).then(r => r.ok ? r.json() : null).catch(() => { helperMissing = !!HELPER; return null; }).then(user => {
   currentUser = user;
-  document.getElementById('signIn').hidden = !!user;
+  const local = !!(user && user.local) || !!HELPER;  // no app accounts with the local helper
+  document.getElementById('signIn').hidden = !!user || local;
   document.getElementById('signOut').hidden = !user;
-  document.getElementById('acctMenu').hidden = !user;
+  document.getElementById('acctMenu').hidden = !user || local;
+  document.getElementById('helperInstall').hidden = !helperMissing;
+  if (helperMissing) {
+    for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Helper not running';
+    setReady(false, 'Install the helper to start');
+    document.getElementById('canvasOverlay').textContent = 'Install the helper above. Your posting progress will appear here.';
+    return;
+  }
   document.getElementById('signedInEmail').textContent = '';
   if (!user) {
     for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
@@ -1510,17 +1548,21 @@ document.getElementById('newPostBtn').addEventListener('click', () => { focusJob
 /* ---------- video maker ---------- */
 (() => {
   const $ = id => document.getElementById(id);
-  const sceneCount = () => $('mkScript').value.split(/\n\s*\n/).filter(x => x.trim()).length;
-  const hint = () => { const n = sceneCount(), m = $('mkImages').files.length;
-    $('mkSceneHint').textContent = `${n} scene${n === 1 ? '' : 's'} in the script · ${m} image${m === 1 ? '' : 's'} chosen` + (n && m && n !== m ? ' \u2014 these need to match' : ''); };
-  $('mkScript').addEventListener('input', hint); $('mkImages').addEventListener('change', hint); hint();
+  const imageHint = () => { const m = $('mkImages').files.length;
+    $('mkImageHint').textContent = m ? `${m} image${m === 1 ? '' : 's'} chosen — spread evenly across the recording.`
+      : 'Add as many as you like. They’re spread evenly across the recording.'; };
+  const scriptReq = () => { $('mkScriptReq').hidden = !$('mkSubtitles').checked; };
+  $('mkImages').addEventListener('change', imageHint); $('mkSubtitles').addEventListener('change', scriptReq); scriptReq();
   let videoUrl = null;
   $('makerForm').addEventListener('submit', async e => {
     e.preventDefault();
     const msg = $('mkMsg'); msg.classList.remove('err'); $('mkResult').hidden = true;
     if (!await requireSignIn()) return;
-    if (!$('mkScript').value.trim() || !$('mkImages').files.length || !$('mkVoice').files.length) { msg.textContent = 'Add a script, the images and the voice recording.'; msg.classList.add('err'); return; }
+    const subtitles = $('mkSubtitles').checked;
+    if (!$('mkVoice').files.length || !$('mkImages').files.length) { msg.textContent = 'Add the voice recording and at least one image.'; msg.classList.add('err'); return; }
+    if (subtitles && !$('mkScript').value.trim()) { msg.textContent = 'Paste your script to add subtitles, or turn subtitles off.'; msg.classList.add('err'); return; }
     const fd = new FormData(); fd.append('script', $('mkScript').value);
+    fd.append('subtitles', subtitles); fd.append('music', $('mkMusic').checked);
     fd.append('voice', $('mkVoice').files[0]); [...$('mkImages').files].forEach(f => fd.append('images', f));
     $('mkGo').disabled = true; msg.textContent = 'Uploading\u2026';
     try {
@@ -1531,8 +1573,8 @@ document.getElementById('newPostBtn').addEventListener('click', () => { focusJob
         const st = await (await fetch('/api/video/' + b.id)).json();
         if (st.state === 'running') { msg.textContent = st.step + '\u2026 (this takes a few minutes)'; continue; }
         if (st.state === 'failed') throw new Error(st.error || 'The video could not be built.');
-        videoUrl = st.file_url; $('mkPreview').src = videoUrl; $('mkDownload').href = videoUrl; $('mkResult').hidden = false;
-        msg.textContent = `Done \u2014 the recording matched your script (${Math.round(st.report.match * 100)}%).`; break;
+        videoUrl = api(st.file_url); $('mkPreview').src = videoUrl; $('mkDownload').href = videoUrl; $('mkResult').hidden = false;
+        msg.textContent = st.report.match == null ? 'Done.' : `Done \u2014 the recording matched your script (${Math.round(st.report.match * 100)}%).`; break;
       }
     } catch (err) { msg.textContent = err.message; msg.classList.add('err'); }
     $('mkGo').disabled = false;
@@ -1555,7 +1597,7 @@ async function connectWs() {
   if (hostedPending || manualSignInActive) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   clearTimeout(wsTimer);
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  ws = new WebSocket(HELPER ? HELPER.replace(/^http/, 'ws') + '/ws' : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
     if (m.t === 'no-browser') {
@@ -1691,7 +1733,7 @@ async function refreshJobs() {
   document.getElementById('summaryAccounts').textContent = Object.entries(job.accounts || {}).map(([p, name]) => `${PLAT_NAME[p]}: ${name}`).join(' · ') || 'Account details appear as each posting page is checked.';
   document.getElementById('summaryWhen').textContent = (job.dry ? 'Preview only · ' : '') + (failed ? 'Failed · ' : job.finished ? 'Completed · ' : running ? 'In progress · ' : 'Queued · ') + (job.when === 'Now' ? 'Post now' : `Requested time: ${job.when}`);
   const thumbImg = document.getElementById('summaryThumb'), thumbPh = document.getElementById('summaryThumbPh');
-  if (job.thumbnail_url) { thumbImg.src = job.thumbnail_url; thumbImg.hidden = false; thumbPh.hidden = true; }
+  if (job.thumbnail_url) { thumbImg.src = api(job.thumbnail_url); thumbImg.hidden = false; thumbPh.hidden = true; }
   else { thumbImg.hidden = true; thumbPh.hidden = false; }
   document.getElementById('summaryPlats').innerHTML = job.platforms.map(p => {
     const st = job.steps[p].state;
@@ -1794,5 +1836,40 @@ document.addEventListener('pointerdown', e => {
 })();
 </script>
 <script src="/static/connections.js"></script>
+<script>
+/* Local helper: install card, and Connect opens the real Chrome window on this computer (no streamed view). */
+(() => {
+  const $ = id => document.getElementById(id);
+  $('installCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText($('installCmd').textContent); $('installCopy').textContent = 'Copied'; } catch (e) {}
+  };
+  $('installRecheck').onclick = () => location.reload();
+  if (HELPER) setInterval(() => {  // pick the helper up as soon as the installer starts it
+    if (helperMissing) originalFetch(api('/api/auth/me')).then(r => { if (r.ok) location.reload(); }).catch(() => {});
+  }, 5000);
+  const names = {youtube: 'YouTube', instagram: 'Instagram (Meta Business Suite)', facebook: 'Facebook (Meta Business Suite)', tiktok: 'TikTok'};
+  authReady.then(() => {
+    if (!currentUser || !currentUser.local) return;
+    document.querySelectorAll('[data-connect]').forEach(button => {
+      button.onclick = async () => {
+        const platform = button.dataset.connect;
+        $('localSignIn').hidden = false;
+        $('localSignInText').textContent = `Opening ${names[platform]} in Chrome…`;
+        try {
+          const r = await fetch('/api/connect?platform=' + platform, {method: 'POST'});
+          const b = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(b.error || 'Could not open Chrome.');
+          $('localSignInText').textContent = `A Chrome window opened on ${names[platform]}. If you don't see it, look for the second Chrome icon in your Dock. Sign in there like normal, then click Done.`;
+        } catch (err) { $('localSignInText').textContent = err.message; }
+      };
+    });
+    $('localSignInDone').onclick = async () => {
+      $('localSignIn').hidden = true;
+      await fetch('/api/connect/done', {method: 'POST'}).catch(() => {});
+      refreshAccounts();
+    };
+  });
+})();
+</script>
 </body>
 </html>

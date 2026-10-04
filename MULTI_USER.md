@@ -77,3 +77,46 @@ user's own computer, using their own signed-in Chrome; platform logins never rea
 
 Not done yet: Windows/Linux Chrome launching (`bot.start_chrome` uses macOS `open`), a packaged installer with auto-update, prompts for
 platform verification codes, and hosting/billing.
+
+## Serverless: minefoundation.org + local helper (no server at all)
+
+The public site is static. `https://minefoundation.org` serves the same dashboard (`webapp/static/index.html`), and the page
+talks straight to a helper on the visitor's own Mac at `http://127.0.0.1:8765`. Videos, platform sign-ins and posting
+never touch any server, so hosting is just static files.
+
+- **Helper** (`helper/local_app.py`): the single-user engine (`webapp/engine.py`) plus `/api/auth/me` (always the local
+  owner), `/api/connect?platform=` (shows the automation Chrome on-screen at that platform so the user signs in directly)
+  and `/api/connect/done` (sends it back off-screen). Data lives in `~/.shorts-everywhere` (`SHORTS_DATA_DIR`), including
+  `chrome_profile/`. Optional settings in `~/.shorts-everywhere/config.json`: `support_url`, `yt_no_link_channels`,
+  `meta_asset_id`, `meta_business_id`.
+- **Access guard**: Host must be `127.0.0.1:8765`/`localhost:8765` (blocks DNS rebinding); any `Origin` must be
+  minefoundation.org or the helper itself (`SHORTS_EXTRA_ORIGINS` adds more, for testing); writes need an Origin plus
+  `X-Shorts-Request: 1`, which forces a CORS preflight; preflights answer Chrome's Private Network Access check
+  (`Access-Control-Allow-Private-Network`). WebSockets need an allowed Origin.
+- **Dashboard**: on `*.minefoundation.org` (or with `?helper` in the URL) every `/api`, `/uploads`, `/thumbs`, `/ws` URL is
+  rewritten to the helper. If the helper can't be reached it shows an install card and polls every 5s, reloading once the
+  helper answers. Served by the helper or the hosted server, URLs stay same-origin as before. Safari won't let an https page
+  reach `http://127.0.0.1`, so Safari users open `http://127.0.0.1:8765` directly.
+- **Install** (`site/install.sh`, served as `https://minefoundation.org/install.sh`):
+  `curl -fsSL https://minefoundation.org/install.sh | bash`. It needs macOS and Google Chrome, but no admin password or
+  Apple developer signing. It installs `uv` into `~/.shorts-everywhere/bin`, which fetches Python 3.12 into
+  `~/.shorts-everywhere/venv`, then downloads this repo's `master` from GitHub into `~/.shorts-everywhere/app` and
+  registers the LaunchAgent `org.minefoundation.shorts-helper` (starts at login, restarts if it exits, logs to
+  `~/.shorts-everywhere/helper.log`). Re-running it updates the helper; new code replaces the old only after packages
+  install. `site/uninstall.sh` removes it and keeps sign-ins unless given `--all`. `SHORTS_REF=<branch>` and
+  `SHORTS_SOURCE_DIR=<checkout>` install something other than `master`, for testing.
+- **Build/deploy**: `bash site/build.sh` writes `site/dist/` (`index.html`, `static/design.css`, `static/connections.js`,
+  `install.sh`, `uninstall.sh`, `.htaccess` serving `.sh` as `text/plain`, uncached). Upload `site/dist/` to the web root.
+- **Per-user description link**: `bot.py`'s Ko-fi line is now `SHORTS_SUPPORT_URL` (empty means no link), and the
+  no-link YouTube channels are `SHORTS_YT_NO_LINK_CHANNELS`. A public install no longer adds the owner's Ko-fi link to other
+  people's posts. The owner's own server launcher must set both to keep the old behaviour.
+- The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
+
+Verified 2026-10-04: the installer ran end to end into a scratch `HOME` (about 90s, LaunchAgent up, `/api/helper/info`
+answering), then was unloaded. curl checks of the guard: minefoundation.org Origin allowed; another Origin, a rebound Host,
+a POST without the header and a POST without an Origin all got 403; the PNA preflight returned
+`access-control-allow-private-network: true`. Headless Chrome against `site/dist` served on another port with `?helper`:
+the install card showed while the helper was down; after the helper started, the page reloaded itself into the dashboard
+(Connect buttons, "Browser is off", cross-origin POST and `/api/jobs` worked, no console errors); the same page served
+by the helper behaved the same. Not tested: a real https page on minefoundation.org reaching the helper (needs deployment),
+and a real platform sign-in through `/api/connect`.

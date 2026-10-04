@@ -27,3 +27,4 @@ run_all.sh
 
 # Private hosted accounts, sessions and tenant workspaces
 private_data/
+site/dist/

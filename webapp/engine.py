@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from playwright.async_api import async_playwright  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
-UPLOADS = os.path.join(HERE, "uploads")
+UPLOADS = os.path.join(os.environ["SHORTS_DATA_DIR"], "uploads") if os.environ.get("SHORTS_DATA_DIR") else os.path.join(HERE, "uploads")
 THUMBS = os.path.join(bot.HERE, "shots", "thumbs")
 os.makedirs(UPLOADS, exist_ok=True)
 CDP = f"http://127.0.0.1:{bot.PORT}"
@@ -190,7 +190,7 @@ def run_job(job):
                     pvid["title"], note = fit_title(vid["title"])
                     if note:
                         on_step(note)
-                pvid["description"], note = fit_caption(plat, vid["description"])
+                pvid["description"], note = fit_caption(plat, bot.with_support_link(vid))
                 if note:
                     on_step(note)
                 if plat == "youtube":
@@ -348,12 +348,13 @@ def retry_job(jid: str):
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
+MAX_IMAGES = 100  # a sanity cap on upload size (20MB each), not a creative limit
 
 
 def _run_video_build(vj):
     try:
-        out, report = videomaker.build(vj["dir"], vj["script"], vj["images"], vj["voice"],
-                                       on_step=lambda m: vj.__setitem__("step", m))
+        out, report = videomaker.build(vj["dir"], vj["script"], vj["images"], vj["voice"], subtitles=vj["subtitles"],
+                                       music=vj["music"], on_step=lambda m: vj.__setitem__("step", m))
         final = os.path.join(UPLOADS, f"{vj['id']}_video.mp4")
         os.replace(out, final)
         vj["file_url"], vj["report"], vj["state"] = f"/uploads/{os.path.basename(final)}", report, "done"
@@ -379,11 +380,12 @@ async def _save_upload(up, dest, limit):
 
 
 @app.post("/api/video/create")
-async def video_create(script: str = Form(...), voice: UploadFile = File(...), images: list[UploadFile] = File(...)):
-    if not script.strip():
-        return JSONResponse({"error": "Paste your script first."}, status_code=400)
-    if not 1 <= len(images) <= 12:
-        return JSONResponse({"error": "Upload between 1 and 12 images, one per scene."}, status_code=400)
+async def video_create(voice: UploadFile = File(...), images: list[UploadFile] = File(...), script: str = Form(""),
+                       subtitles: bool = Form(False), music: bool = Form(False)):
+    if subtitles and not script.strip():
+        return JSONResponse({"error": "Paste your script to add subtitles, or turn subtitles off."}, status_code=400)
+    if not 1 <= len(images) <= MAX_IMAGES:
+        return JSONResponse({"error": f"Upload between 1 and {MAX_IMAGES} images."}, status_code=400)
     if os.path.splitext(voice.filename or "")[1].lower() not in AUDIO_EXTS:
         return JSONResponse({"error": "The voice recording must be an mp3, wav, m4a, aac or ogg file."}, status_code=400)
     if any(os.path.splitext(i.filename or "")[1].lower() not in IMAGE_EXTS for i in images):
@@ -402,7 +404,7 @@ async def video_create(script: str = Form(...), voice: UploadFile = File(...), i
         shutil.rmtree(wdir, ignore_errors=True)
         return JSONResponse({"error": "A file is too large (audio max 60MB, images max 20MB each)."}, status_code=400)
     vj = {"id": vid, "state": "running", "step": "Queued", "error": None, "file_url": None, "report": None, "created": time.time(),
-          "dir": wdir, "script": script, "images": paths, "voice": voice_path}
+          "dir": wdir, "script": script, "images": paths, "voice": voice_path, "subtitles": subtitles, "music": music}
     video_jobs[vid] = vj
     build_executor.submit(_run_video_build, vj)
     return {"id": vid}

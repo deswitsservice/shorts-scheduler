@@ -119,6 +119,30 @@ def render_caption(text, cfg, out):
     return img.size, len(lines)
 
 
+ENDCARD_LINES = ["Support these videos", "ko-fi.com/amouraquotes"]
+ENDCARD_SECONDS = 3.0
+
+
+def render_endcard(cfg, out):
+    """Two-line Ko-fi card in the caption style, smaller; shown near the top over the last few seconds."""
+    lines = cfg.get("endcard_lines", ENDCARD_LINES)
+    fonts = [ImageFont.truetype(cfg["font"], int(cfg["font_size"] * 0.75)),
+             ImageFont.truetype(cfg["font"], int(cfg["font_size"] * 0.9))]
+    px, py, gap = 40, 26, 14
+    boxes = [f.getbbox(l) for f, l in zip(fonts, lines)]
+    w = max(b[2] - b[0] for b in boxes) + 2 * px
+    h = sum(b[3] - b[1] for b in boxes) + gap + 2 * py
+    img = Image.new("RGBA", (int(w), int(h)), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, w - 1, h - 1], radius=24, fill=(0, 0, 0, 140))
+    y = py
+    for f, l, b, col in zip(fonts, lines, boxes, [(255, 255, 255, 220), (255, 214, 140, 255)]):
+        d.text(((w - (b[2] - b[0])) / 2 - b[0], y - b[1]), l, font=f, fill=col)
+        y += b[3] - b[1] + gap
+    img.save(out)
+    return img.size
+
+
 def unique_path(path):
     if not os.path.exists(path):
         return path
@@ -134,7 +158,10 @@ def audio_graph(cfg, ai, total):
     af = (f"[{ai}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
           f"apad=whole_dur={total:.3f}[voice]")
     if cfg.get("bed") and os.path.exists(cfg["bed"]):
-        inputs += ["-ss", str(cfg.get("bed_start", 0)), "-i", cfg["bed"]]
+        # Start early enough that the bed never runs out under a long recording; loop only if it is shorter than the video.
+        bed_len = duration(cfg["bed"])
+        start = min(cfg.get("bed_start", 0), max(0.0, bed_len - total))
+        inputs += (["-stream_loop", "-1"] if total > bed_len else []) + ["-ss", f"{start:.3f}", "-i", cfg["bed"]]
         af += (f";[{ai + 1}:a]aformat=sample_rates=44100:channel_layouts=stereo,"
                f"volume={cfg['bed_gain']},atrim=0:{total:.3f},afade=t=in:d=1.5,"
                f"afade=t=out:st={total - 2:.3f}:d=2[bed];"
@@ -185,7 +212,11 @@ def main():
 
     W, H = cfg["size"]
     fps, xf = cfg["fps"], cfg["crossfade"]
-    caps = [(si, t) for si, s in enumerate(cfg["scenes"]) for t in s["captions"]]
+    # "captions" at the top level means images and subtitles are independent (images spread evenly over the audio);
+    # otherwise each scene carries its own captions and lasts as long as they are spoken.
+    even = "captions" in cfg
+    caps = [(None, t) for t in cfg["captions"]] if even else [
+        (si, t) for si, s in enumerate(cfg["scenes"]) for t in s["captions"]]
 
     have_voice = os.path.exists(cfg["voice"]) and not args.preview
     if args.detect:
@@ -198,13 +229,14 @@ def main():
     if have_voice:
         vdur = duration(cfg["voice"])
         timings = cfg["timings"]
-        if not timings:
-            timings, _ = detect_segments(cfg["voice"], cfg["silence_db"], cfg["silence_min"])
-        if len(timings) > len(caps):
-            timings = align_segments(timings, [t for _, t in caps])
-        if len(timings) != len(caps):
-            sys.exit(f"{len(timings)} audio segments but {len(caps)} captions. Run --detect, "
-                     f"then either edit the captions to match or set \"timings\" in config.json.")
+        if caps:
+            if not timings:
+                timings, _ = detect_segments(cfg["voice"], cfg["silence_db"], cfg["silence_min"])
+            if len(timings) > len(caps):
+                timings = align_segments(timings, [t for _, t in caps])
+            if len(timings) != len(caps):
+                sys.exit(f"{len(timings)} audio segments but {len(caps)} captions. Run --detect, "
+                         f"then either edit the captions to match or set \"timings\" in config.json.")
         total = vdur + cfg["end_pad"]
         if total < 30:
             sys.exit(f"Total {total:.1f}s is under 30s: request a slower take rather than stretching.")
@@ -219,18 +251,21 @@ def main():
 
     n = len(cfg["scenes"])
     bounds = []
-    idx = 0
-    for si, s in enumerate(cfg["scenes"]):
-        first, last = idx, idx + len(s["captions"]) - 1
-        if si > 0:
-            bounds.append((timings[prev_last][1] + timings[first][0]) / 2)
-        prev_last = last
-        idx += len(s["captions"])
+    if even:
+        bounds = [total * k / n for k in range(1, n)]
+    else:
+        idx = 0
+        for si, s in enumerate(cfg["scenes"]):
+            first, last = idx, idx + len(s["captions"]) - 1
+            if si > 0:
+                bounds.append((timings[prev_last][1] + timings[first][0]) / 2)
+            prev_last = last
+            idx += len(s["captions"])
     offsets = [b - xf / 2 for b in bounds]
     edges = [0.0] + offsets + [total - xf]
     durs = [edges[k + 1] + xf - edges[k] for k in range(n)]
     if min(durs) < 2 * xf:
-        sys.exit(f"A scene is too short: {durs}")
+        sys.exit(f"Too many images for a {total:.0f}s video: each would show for only {min(durs):.1f}s.")
 
     print("Scene boundaries:", [round(b, 2) for b in bounds])
     print("Clip durations:  ", [round(d, 3) for d in durs], "-> total", round(total, 2))
@@ -286,7 +321,6 @@ def main():
     chain, prev = [], "[0:v]"
     for i in range(len(caps)):
         lab = f"[o{i}]" if i < len(caps) - 1 else "[vfinal]"
-        (_, _), _ = (None, None), None
         w, h = Image.open(os.path.join(BUILD, f"cap{i + 1}.png")).size
         y = H - h - cfg["caption_bottom_margin"]
         chain.append(f"{prev}[c{i}]overlay=x=(W-w)/2:y={y}:eof_action=pass{lab}")
@@ -294,9 +328,21 @@ def main():
 
     inputs = ["-i", base] + cap_inputs
     filters = cap_filters + chain
-    maps = ["-map", "[vfinal]"]
+    vlabel = "[vfinal]" if caps else "[0:v]"
+    n_vid_inputs = 1 + len(caps)
+    if cfg.get("endcard", True):
+        png = os.path.join(BUILD, "endcard.png")
+        _, eh = render_endcard(cfg, png)
+        d = min(ENDCARD_SECONDS, total - 0.5)
+        k = n_vid_inputs
+        inputs += ["-loop", "1", "-framerate", str(fps), "-t", f"{d:.3f}", "-i", png]
+        filters.append(f"[{k}:v]format=rgba,fade=t=in:st=0:d=0.4:alpha=1,setpts=PTS+{total - d:.3f}/TB[ec];"
+                       f"{vlabel}[ec]overlay=x=(W-w)/2:y={int(H * 0.12)}:eof_action=pass[vend]")
+        vlabel = "[vend]"
+        n_vid_inputs += 1
+    maps = ["-map", vlabel if vlabel != "[0:v]" else "0:v"]
     if have_voice:
-        extra, af = audio_graph(cfg, 1 + len(caps), total)
+        extra, af = audio_graph(cfg, n_vid_inputs, total)
         inputs += extra
         filters.append(af)
         maps += ["-map", "[aout]"]
