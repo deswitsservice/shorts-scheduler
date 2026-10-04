@@ -7,11 +7,50 @@ import sys, os, re, glob, subprocess, time, urllib.request, json, datetime
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PROFILE = os.path.join(HERE, "chrome_profile")
+PROFILE = os.environ.get("BOT_PROFILE") or os.path.join(HERE, "chrome_profile")
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9222
 ACTIVE_TARGET_ID = None  # Explicit tab identity for the in-app viewer; never inferred from window focus.
 SITES = ["https://studio.youtube.com", "https://www.tiktok.com/tiktokstudio", "https://business.facebook.com"]
+SUPPORT_URL = "ko-fi.com/amouraquotes"
+SUPPORT_LINE = f"☕ Support my videos: https://{SUPPORT_URL}"  # YouTube only links it with the scheme
+# YouTube channels that can't carry outside links in descriptions until they're phone-verified (Cold Case Chronicles).
+YT_NO_LINK_CHANNELS = {"UCg85UGSCLnoTM48RggRJmkQ"}
+
+
+def attach_local_file(pg, target, path):
+    """Point a file input at a file on this machine. Playwright's set_input_files streams the bytes over CDP,
+    which refuses files over 50MB and crawls on big ones; Chrome runs on the same Mac, so hand it the path
+    instead (DOM.setFileInputFiles). `target` is a Locator/ElementHandle for the <input type=file>."""
+    handle = target.element_handle(timeout=180000) if hasattr(target, "element_handle") else target
+    session = pg.context.new_cdp_session(pg)
+    try:
+        handle.evaluate("e => e.setAttribute('data-bot-upload', '1')")
+        obj = session.send("Runtime.evaluate", {"expression": "document.querySelector('[data-bot-upload]')"})
+        if obj["result"].get("subtype") == "null":  # input lives in an iframe: fall back to streaming the bytes
+            handle.set_input_files(path, timeout=600000)
+            return
+        session.send("DOM.setFileInputFiles", {"files": [os.path.abspath(path)], "objectId": obj["result"]["objectId"]})
+        handle.evaluate("e => e.removeAttribute('data-bot-upload')")
+    finally:
+        session.detach()
+
+
+def with_support_link(vid):
+    """Description with the Ko-fi line added just above the trailing hashtags. Skipped for made-for-kids videos
+    (YouTube doesn't allow links to outside sites on kids content) and when the link is already there."""
+    desc = vid.get("description", "")
+    if vid.get("made_for_kids") or SUPPORT_URL in desc:
+        return desc
+    m = re.search(r"(?:^|\n)[ \t]*((?:#\w+[ \t]*)+)\s*$", desc)
+    if not m:
+        return (desc.rstrip() + "\n\n" + SUPPORT_LINE).strip()
+    return (desc[:m.start()].rstrip() + "\n\n" + SUPPORT_LINE + "\n\n" + m.group(1).strip()).strip()
+
+
+def without_support_link(desc):
+    """Undo with_support_link (the web app adds it before trimming, for every platform)."""
+    return re.sub(r"\n*" + re.escape(SUPPORT_LINE) + r"\n*", "\n\n", desc).strip()
 
 
 def chrome_running():
@@ -72,7 +111,12 @@ def start_chrome(urls=(), background=True):
             command += ["-g", "-j"]
         command += ["-a", "/Applications/Google Chrome.app", "--args",
                     f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
-                    "--no-first-run", "--no-default-browser-check", "--window-size=" + os.environ.get("SHORTS_WINDOW_SIZE", "1280x900").lower().replace("x", ",")]
+                    "--no-first-run", "--no-default-browser-check",
+                    # A hidden/off-screen window is otherwise treated as a background tab and throttled: a Meta
+                    # upload crawled from 60% to 73% over minutes (2026-10-03). Same flags as webapp/browser_worker.py.
+                    "--disable-features=MacWebContentsOcclusion", "--disable-backgrounding-occluded-windows",
+                    "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
+                    "--window-size=" + os.environ.get("SHORTS_WINDOW_SIZE", "1280x900").lower().replace("x", ",")]
         if background:
             command.append("--window-position=-2400,-2400")
         command.extend(urls)
@@ -128,13 +172,23 @@ def resolve_channel(pg):
     sys.exit(f"Could not resolve a YouTube channel from the signed-in account (landed on {pg.url!r}).")
 
 
+def _accept_dialog(dialog):
+    # The dashboard's other CDP connections (account polling, live view) have no dialog handler, so
+    # Playwright auto-closes the same dialog for them; whichever side answers second gets "No dialog
+    # is showing" (confirmed live on 2026-10-03). The dialog is already gone either way.
+    try:
+        dialog.accept()
+    except Exception:
+        pass
+
+
 def _auto_dismiss_dialogs(pg):
     """connect_over_cdp(no_defaults=True) -- required for Chrome 150+ compatibility -- also turns off
     Playwright's own automatic dialog dismissal. Without this, a native "leave page? changes won't be
     saved" confirm (e.g. navigating away from an unsaved composer draft) has nothing to answer it and
     the call that triggered the navigation hangs/errors instead of just proceeding. Each call site gets
     a fresh Page wrapper (new connect_over_cdp() per with-block), so this is safe to attach every time."""
-    pg.on("dialog", lambda dialog: dialog.accept())
+    pg.on("dialog", _accept_dialog)
     _restore_if_minimized(pg)
     _fix_viewport(pg)
     return pg
@@ -243,11 +297,12 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             on_step(f"YouTube channel: {channel}")
             pg.goto(f"https://studio.youtube.com/channel/{channel}/videos/upload?d=ud")
             on_step("Uploading video file")
-            pg.locator("input[type=file]").first.set_input_files(vid["file"], timeout=180000)
+            attach_local_file(pg, pg.locator("input[type=file]").first, vid["file"])
             pg.wait_for_selector("#title-textarea #textbox", timeout=60000)
             on_step("Adding title and description")
             t = pg.locator("#title-textarea #textbox"); t.click(); t.fill(vid["title"])
-            d = pg.locator("#description-textarea #textbox"); d.click(); d.fill(vid["description"])
+            desc = without_support_link(vid["description"]) if channel in YT_NO_LINK_CHANNELS else with_support_link(vid)
+            d = pg.locator("#description-textarea #textbox"); d.click(); d.fill(desc)
             if vid.get("thumbnail"):
                 ti = pg.locator("input[type=file][accept*='image']")
                 print("youtube: thumbnail inputs found:", ti.count())
@@ -306,8 +361,35 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
         pg.screenshot(path=os.path.join(HERE, "shots", f"yt_{vid['id']}.png"))
         if commit and (when or now):
             on_step("Publishing video" if now else "Scheduling video")
+            # Publishing before Studio's copyright/content checks finish raises a "We're still checking your
+            # content" prompt (Publish anyway / Go back) that nothing answered, so the video sat as a private
+            # draft (confirmed live on 2026-10-03). Wait for the checks first, up to 5 minutes.
+            on_step("Waiting for YouTube's content checks")
+            for _ in range(300):
+                if pg.get_by_text(re.compile(r"Checks complete")).count():
+                    break
+                pg.wait_for_timeout(1000)
             pg.locator("#done-button").click()
-            pg.wait_for_timeout(4000)
+            pg.wait_for_timeout(3000)
+            anyway = pg.get_by_role("button", name="Publish anyway")
+            if anyway.count() and anyway.first.is_visible():
+                if not pg.get_by_text(re.compile(r"Checks complete. No issues found")).count():
+                    pg.screenshot(path=os.path.join(HERE, "shots", f"yt_{vid['id']}_checks.png"))
+                    sys.exit("youtube: Studio's content checks haven't passed yet; the video was left private. Check YouTube Studio.")
+                anyway.first.click()
+            # A fixed 4s wait wasn't enough: Studio was still "Saving..." when the next platform reused this
+            # tab, the "leave page?" dialog got accepted, and the video stayed a draft while the log said
+            # "published" (confirmed live on 2026-10-03). Wait for Studio's own confirmation instead.
+            on_step("Waiting for YouTube to confirm")
+            done = pg.locator("ytcp-video-share-dialog, ytcp-uploads-still-processing-dialog")
+            for _ in range(120):
+                if any(done.nth(i).is_visible() for i in range(done.count())) or \
+                        pg.get_by_text(re.compile(r"Video (published|scheduled)")).count():
+                    break
+                pg.wait_for_timeout(1000)
+            else:
+                pg.screenshot(path=os.path.join(HERE, "shots", f"yt_{vid['id']}_unconfirmed.png"))
+                sys.exit("youtube: Studio never confirmed the publish within 2 minutes; it may still be a draft. Check YouTube Studio.")
             on_step("Done")
             print("YouTube:", "published" if now else "scheduled", vid["id"], "" if now else f"for {when}")
         else:
@@ -344,8 +426,18 @@ def select_meta_account(pg, target, expected_name=None):
     icons = pg.locator("img[alt=Instagram], img[alt=Facebook]")
     if icons.count() == 0:
         sys.exit("meta: no Instagram/Facebook account icons found in the composer")
-    icons.first.click(force=True)
-    pg.wait_for_timeout(1000)
+    # The picker opens from the "Post to" combobox; a forced click on the 12px icon inside it sometimes lands
+    # without opening anything (seen 2026-10-03, with Meta's terms-update banner on the page), so click the
+    # combobox itself and retry until the rows render.
+    opener = pg.locator("[role=combobox]", has=icons.first)
+    opener = opener.first if opener.count() else icons.first
+    for _ in range(3):
+        opener.click(force=True)
+        try:
+            pg.wait_for_selector("[role=option]", timeout=3000)
+            break
+        except Exception:
+            pass
     handles = pg.locator("[role=option]").element_handles()
     if not handles:
         sys.exit("meta: account picker did not open (no [role=option] rows)")
@@ -388,16 +480,22 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
     if not now:
         when = datetime.datetime.combine(datetime.date.today(), datetime.datetime.strptime(at, "%H:%M").time()) if at else \
             datetime.datetime.strptime(vid["schedule"], "%Y-%m-%d %H:%M")
-    caption = vid["description"].replace(" #shorts", "")
+    caption = with_support_link(vid).replace(" #shorts", "")
     on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
         on_step(f"Navigating to Meta Business Suite ({target})")
         pg = fresh_page(b.contexts[0], "business.facebook.com/latest")
         track_automation_page(pg)
-        # No asset_id/business_id in the URL: Business Suite auto-resolves to whichever business/page
-        # context the signed-in account defaults to -- works for any user, not just one hardcoded pair.
-        pg.goto("https://business.facebook.com/latest/reels_composer")
+        # Without asset_id/business_id, Business Suite auto-resolves to whichever business/page context the
+        # signed-in account defaults to -- works for any user, but that default can change on its own (it
+        # switched to a different Page overnight on 2026-10-03). SHORTS_META_ASSET_ID/SHORTS_META_BUSINESS_ID
+        # pin it to one Page.
+        composer = "https://business.facebook.com/latest/reels_composer"
+        asset, business = os.environ.get("SHORTS_META_ASSET_ID"), os.environ.get("SHORTS_META_BUSINESS_ID")
+        if asset:
+            composer += f"?asset_id={asset}" + (f"&business_id={business}" if business else "")
+        pg.goto(composer)
         pg.wait_for_selector("text=Reel details", timeout=60000)
         pg.wait_for_timeout(2000)
         on_step(f"Selecting {target} account")
@@ -408,7 +506,7 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
         with pg.expect_file_chooser(timeout=30000) as fc:
             pg.get_by_role("button", name="Add Video").click()
         try:
-            fc.value.set_files(vid["file"], timeout=180000)
+            attach_local_file(pg, fc.value.element, vid["file"])
         except Exception:
             pass
         pg.wait_for_selector("text=100%", timeout=240000)
@@ -498,7 +596,7 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
             datetime.datetime.strptime(vid["schedule"], "%Y-%m-%d %H:%M")
         if when.minute % 5:
             sys.exit("TikTok schedules in 5-minute steps")
-    caption = vid["description"].replace(" #shorts", "")
+    caption = with_support_link(vid).replace(" #shorts", "")
     on_step("Connecting to posting browser")
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
@@ -507,7 +605,7 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
         track_automation_page(pg)
         pg.goto("https://www.tiktok.com/tiktokstudio/upload?from=webapp")
         on_step("Uploading video file")
-        pg.locator("input[type=file]").first.set_input_files(vid["file"], timeout=180000)
+        attach_local_file(pg, pg.locator("input[type=file]").first, vid["file"])
         pg.wait_for_selector("text=Uploaded", timeout=240000)
         pg.wait_for_timeout(2000)
         try:
@@ -631,6 +729,57 @@ def youtube_thumbnail(title_start, thumb_path):
         print("youtube: thumbnail saved for", title_start)
 
 
+def _norm_title(s):
+    """Studio lists titles with odd whitespace/quote variants and may truncate long ones; compare loosely."""
+    s = s.replace("’", "'").replace("️", "").lower()
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def youtube_titles(changes_path, commit=False):
+    """Rename existing Shorts in YouTube Studio. changes_path is a JSON list of [current title, new title].
+    Without commit, only reports which videos were found -- nothing is edited."""
+    changes = json.load(open(changes_path))
+    for old, new in changes:
+        if len(new) > 100:
+            sys.exit(f"New title is over YouTube's 100-character limit: {new!r}")
+    start_chrome()
+    with sync_playwright() as p:
+        b = p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True)
+        pg = fresh_page(b.contexts[0], "studio.youtube.com")
+        track_automation_page(pg)
+        channel = resolve_channel(pg)
+        results = {}
+        for old, new in changes:
+            pg.goto(f"https://studio.youtube.com/channel/{channel}/videos/short")
+            pg.wait_for_selector("ytcp-video-row", timeout=60000)
+            pg.wait_for_timeout(2500)
+            links = pg.locator("ytcp-video-row a#video-title")
+            titles = [links.nth(i).inner_text() for i in range(links.count())]
+            want = _norm_title(old)
+            hits = [i for i, t in enumerate(titles) if _norm_title(t) == want]
+            if not hits:  # YouTube caps titles at 100 chars, so a long one may be stored cut short
+                hits = [i for i, t in enumerate(titles) if len(_norm_title(t)) >= 30 and want.startswith(_norm_title(t))]
+            if _norm_title(new) in (_norm_title(t) for t in titles):
+                results[old] = "already renamed"
+            elif len(hits) != 1:
+                results[old] = "NOT FOUND" if not hits else f"AMBIGUOUS ({len(hits)} matches)"
+            elif not commit:
+                results[old] = "found (dry run, not changed)"
+            else:
+                links.nth(hits[0]).click()
+                box = pg.locator("#title-textarea #textbox")
+                box.wait_for(timeout=60000)
+                pg.wait_for_timeout(1500)
+                box.fill(new)
+                pg.wait_for_timeout(1000)
+                pg.locator("#save").click()
+                pg.wait_for_timeout(4000)
+                results[old] = "renamed"
+            print(f"{results[old]:<30} {old}  ->  {new}")
+        print(f"\n{sum(v == 'renamed' for v in results.values())} renamed, "
+              f"{sum(v.startswith(('NOT', 'AMBIG')) for v in results.values())} problems, {len(results)} total")
+
+
 def load(vid_id):
     for v in json.load(open(os.path.join(HERE, "queue.json")))["videos"]:
         if v["id"] == vid_id:
@@ -644,6 +793,8 @@ if __name__ == "__main__":
         login()
     elif cmd == "ytthumb":
         youtube_thumbnail(sys.argv[2], sys.argv[3])
+    elif cmd == "yttitles":
+        youtube_titles(sys.argv[2], commit="--commit" in sys.argv)
     elif cmd == "tiktok":
         at = sys.argv[sys.argv.index("--at") + 1] if "--at" in sys.argv else None
         tiktok(load(sys.argv[2]), at=at, commit="--commit" in sys.argv)

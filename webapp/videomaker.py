@@ -1,7 +1,8 @@
-"""Turn a script + scene images + a voice recording into a captioned vertical short.
+"""Turn a voice recording + any number of images (+ optional script subtitles and music) into a vertical short.
 
-The heavy lifting is video_build.py (ffmpeg); this module prepares its config, times each caption to the
-actual speech with faster-whisper, and refuses to build when the voice does not say the script.
+The heavy lifting is video_build.py (ffmpeg); this module prepares its config. Images are spread evenly over the
+recording. With subtitles on, it times each caption to the actual speech with faster-whisper and refuses to build
+when the voice does not say the script.
 """
 import difflib, json, os, re, subprocess, sys
 from pathlib import Path
@@ -9,6 +10,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 MATCH_MIN = 0.85
+END_PAD = 0.5
+MIN_IMAGE_SECONDS = 1.0
 GEORGIA = "/System/Library/Fonts/Supplemental/Georgia Italic.ttf"
 _model = None
 
@@ -89,29 +92,41 @@ def align(captions, words):
     return timings, ratio
 
 
-def build(workdir, script, images, voice, music=None, on_step=lambda m: None):
-    """images: list of paths, one per scene. Returns (final video path, report dict)."""
+def audio_seconds(path):
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                       capture_output=True, text=True)
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        raise BuildError("Couldn't read the voice recording. Try exporting it again as mp3 or wav.") from None
+
+
+def build(workdir, script, images, voice, subtitles=True, music=True, on_step=lambda m: None):
+    """images: any number of paths, shown in order and spread evenly over the recording.
+    Returns (final video path, report dict)."""
     workdir = Path(workdir)
-    scenes_text = split_script(script)
-    if not scenes_text:
-        raise BuildError("Paste your script first.")
-    if len(scenes_text) != len(images):
-        raise BuildError(f"Your script has {len(scenes_text)} scene(s) (separated by blank lines) but you uploaded "
-                         f"{len(images)} image(s). They need to match: one image per scene.")
-    captions = [c for s in scenes_text for c in s]
-    on_step("Listening to your recording")
-    words = transcribe(voice)
-    timings, ratio = align(captions, words)
-    if ratio < MATCH_MIN:
-        raise BuildError(f"The recording doesn't match your script (similarity {ratio:.0%}). "
-                         "Make sure you uploaded the right audio for this script.")
+    total = audio_seconds(voice) + END_PAD
+    if total / len(images) < MIN_IMAGE_SECONDS:
+        most = int(total // MIN_IMAGE_SECONDS)
+        raise BuildError(f"Too many images for a {total:.0f}-second recording. Use {most} or fewer, "
+                         f"so each image shows for at least {MIN_IMAGE_SECONDS:g} second.")
+    captions, timings, ratio = [], [], None
+    if subtitles:
+        captions = [c for s in split_script(script) for c in s]
+        if not captions:
+            raise BuildError("Paste your script to add subtitles, or turn subtitles off.")
+        on_step("Listening to your recording")
+        words = transcribe(voice)
+        timings, ratio = align(captions, words)
+        if ratio < MATCH_MIN:
+            raise BuildError(f"The recording doesn't match your script (similarity {ratio:.0%}). "
+                             "Make sure you uploaded the right audio for this script.")
     font = GEORGIA if os.path.exists(GEORGIA) else str(ROOT / "fonts" / "Caveat.ttf")
-    bed = music or str(ROOT / "music.wav")
-    cfg = {"output": "final.mp4", "size": [1080, 1920], "fps": 30, "crossfade": 0.3, "zoom_end": 1.06, "end_pad": 0.5,
-           "voice": str(voice), "bed": bed, "bed_start": 120, "bed_gain": 0.3, "font": font,
-           "font_size": 50 if font == GEORGIA else 62, "caption_bottom_margin": 480, "caption_max_width": 760,
-           "caption_lead": 0.05, "caption_tail": 0.3, "silence_db": -35, "silence_min": 0.25, "timings": timings,
-           "scenes": [{"image": str(img), "captions": caps} for img, caps in zip(images, scenes_text)]}
+    cfg = {"output": "final.mp4", "size": [1080, 1920], "fps": 30, "crossfade": 0.3, "zoom_end": 1.06, "end_pad": END_PAD,
+           "voice": str(voice), "bed": str(ROOT / "music.wav") if music else None, "bed_start": 0, "bed_gain": 0.3,
+           "font": font, "font_size": 50 if font == GEORGIA else 62, "caption_bottom_margin": 480,
+           "caption_max_width": 760, "caption_lead": 0.05, "caption_tail": 0.3, "silence_db": -35, "silence_min": 0.25,
+           "timings": timings, "captions": captions, "scenes": [{"image": str(img), "captions": []} for img in images]}
     workdir.mkdir(parents=True, exist_ok=True)
     (workdir / "config.json").write_text(json.dumps(cfg, indent=2))
     on_step("Building the video")
@@ -123,4 +138,5 @@ def build(workdir, script, images, voice, music=None, on_step=lambda m: None):
     m = re.findall(r"WROTE (.+)", r.stdout)
     if not m:
         raise BuildError("The video builder finished without a result.")
-    return m[-1].strip(), {"match": round(ratio, 3), "captions": len(captions), "scenes": len(images)}
+    return m[-1].strip(), {"match": round(ratio, 3) if ratio is not None else None, "captions": len(captions),
+                           "images": len(images), "music": bool(music)}
