@@ -10,12 +10,14 @@ cp "$ROOT/webapp/static/design.css" "$ROOT/webapp/static/connections.js" "$OUT/s
 cp "$ROOT/site/install.sh" "$ROOT/site/uninstall.sh" "$OUT/"
 cat > "$OUT/.htaccess" <<'HTACCESS'
 # Serve the installer scripts as text so `curl | bash` gets them verbatim, and never cache them.
+# Header lines are guarded: without mod_headers an unguarded `Header` makes Apache answer 500 for the whole site.
 <FilesMatch "\.sh$">
   ForceType text/plain
-  Header set Cache-Control "no-cache"
 </FilesMatch>
-<FilesMatch "^index\.html$">
-  Header set Cache-Control "no-cache"
-</FilesMatch>
+<IfModule mod_headers.c>
+  <FilesMatch "(\.sh|^index\.html)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
 HTACCESS
 echo "Built $OUT:"; (cd "$OUT" && find . -type f | sort)
