@@ -112,6 +112,54 @@ never touch any server, so hosting is just static files.
   people's posts. The owner's own server launcher must set both to keep the old behaviour.
 - The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
 
+### App accounts (added 2026-10-05)
+
+Only signed-in members can use the app. Accounts live in their **own** Supabase project, **shorts-everywhere**
+(ref `xzbsyxvovxryisqppbbr`, free plan, `us-east-1`), deliberately separate from the Deswits project so shorts users
+never touch the Deswits database. Schema and auth settings live in `supabase/` in this repo (`supabase/migrations/*.sql`
+plus `supabase/config.toml`), applied with `supabase db push --linked` and `supabase config push` from this repo, which is
+linked to that project only. The database password is in the owner's macOS Keychain (service `supabase-db-password`,
+account `shorts-everywhere`).
+
+- **Sign-in**: email + password through Supabase Auth (`supabase-js` 2.117.2 from jsDelivr), using the dialog on the
+  dashboard. **Email confirmation is off**, because the free built-in mailer only delivers to the Supabase team's own
+  addresses, so a confirmation email would never reach a public user. Consequence: emails aren't verified and there's no
+  "forgot password" email yet. Both need a custom SMTP sender in `[auth.email.smtp]`. Passwords need at least 8 characters.
+- **`public.shorts_users`**: one row per user (`email`, `first_login_at`, `last_login_at`, `login_count`). RLS lets a
+  user read only their own row. Clients have no insert/update/delete privileges. The only write path is the
+  `SECURITY DEFINER` function `shorts_record_login()`, which the dashboard calls after every sign-in.
+  `shorts_ping()` (callable by anyone, returns `now()`) exists only for `.github/workflows/supabase-keepalive.yml`, which
+  calls it daily so the free project never auto-pauses.
+- **The helper enforces it.** Every `/api/*` route except `/api/helper/info`, and `/ws`, needs
+  `Authorization: Bearer <Supabase access token>` (the WebSocket passes `?token=`). The helper checks the token with
+  Supabase's `GET /auth/v1/user` and caches the answer for 60s. It **fails closed**: if Supabase can't be reached, it
+  returns 503 and doesn't let anyone in. The page itself, `/static`, `/uploads` and `/thumbs` stay open
+  (`<img>`/`<video>` can't send a token, and media names are random). The preflight allow-list now includes
+  `Authorization`.
+- **Dashboard** (`SUPA` mode = on minefoundation.org, or the page served by the helper on port 8765): Sign in opens the
+  dialog. The account menu shows the email, and Sign out calls `sb.auth.signOut()`. Every `/api/` fetch gets the current
+  access token, and a 401 brings the sign-in dialog back. The hosted multi-user server keeps its own `/login`.
+- **Upgrading**: a helper installed before this change doesn't allow the `Authorization` header in its preflight, so it
+  stops working with the new site until `curl -fsSL https://minefoundation.org/install.sh | bash` is run again.
+
+Verified 2026-10-05, all against the new project only:
+- **Database:** with a throwaway account, sign-up gave a token and `shorts_record_login()` created the row and counted
+  2 logins on the second call. A user read only their own row. Direct insert and update as that user both got `42501`.
+  Anonymous read and anonymous RPC both got `42501`. `/auth/v1/user` returned 200 for a good token and 403 for a bad one.
+  `shorts_ping` returned the time.
+- **Helper (curl):** `/api/helper/info` and `/` gave 200 without a token. `/api/accounts` without a token, with a bad
+  token, and `POST /api/schedule` without a token all gave 401 "Please sign in."
+- **Headless Chrome** against `site/dist` with `?helper` and this branch's helper:
+  - Signed out, the page showed "Sign in to start".
+  - The dialog refused a too-short password.
+  - Create account signed the user in, showed their email, and connected the `/ws` live view with `?token=`.
+  - Sign out returned to signed out. A wrong password showed "Wrong email or password." Signing in again worked.
+  - `shorts_users.login_count` was 2.
+  - Account status filled in about 5.7s after load (sign-in check plus the account read), showing YouTube connected
+    and TikTok not.
+- **Cleanup:** every test account was deleted afterwards, leaving 0 users and 0 rows. The Deswits project was not
+  touched; its checkout stays linked to `hsdsqakknknkmiklwtky`.
+
 Verified 2026-10-04: the installer ran end to end into a scratch `HOME` (about 90s, LaunchAgent up, `/api/helper/info`
 answering), then was unloaded. curl checks of the guard: minefoundation.org Origin allowed; another Origin, a rebound Host,
 a POST without the header and a POST without an Origin all got 403; the PNA preflight returned
