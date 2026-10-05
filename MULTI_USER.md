@@ -112,6 +112,18 @@ never touch any server, so hosting is just static files.
   people's posts. The owner's own server launcher must set both to keep the old behaviour.
 - The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
 
+### YouTube "upload finished" check (2026-10-05)
+
+A YouTube post of video 10 to amoura looked stuck. A read-only capture of the Studio tab showed the upload already
+finished: the progress bar read "Checks complete. No issues found." and the video was "Saved as private". `bot.youtube`
+waited only for the text "Upload complete", which Studio had already replaced. After 10 minutes the step failed, and
+the retry uploaded the video again; the log showed `thumbnail inputs found` twice.
+
+The wait now counts any of "Upload complete", "Processing", "Checking" or "Checks complete" as finished, provided the
+text no longer says "Uploading". I checked the rule against seven status texts (still uploading, uploading with
+"Processing will begin", upload complete, processing, checking, checks complete, empty), and all came out right. This
+change is only in `bot.py`; the site and installer are unchanged.
+
 ### Minimized posting browser, Post now, channel safety (2026-10-05)
 
 The owner reported three problems on the live site.
