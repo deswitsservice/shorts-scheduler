@@ -1,0 +1,20 @@
+name: Keep Supabase awake
+
+# Free Supabase projects pause after 7 days without database activity, which would break sign-in on
+# minefoundation.org. Call the public shorts_ping() function once a day. The URL and key are the public ones the
+# dashboard already ships; no secrets needed.
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping shorts-everywhere
+        run: |
+          curl -fsS --max-time 30 -X POST \
+            "https://xzbsyxvovxryisqppbbr.supabase.co/rest/v1/rpc/shorts_ping" \
+            -H "apikey: sb_publishable_0vTD_B0vyvQdrnRvxt_dVA_hsJKZfYL" \
+            -H "Content-Type: application/json" -d '{}'

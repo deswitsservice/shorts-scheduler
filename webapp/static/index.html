@@ -1145,6 +1145,22 @@
   <a class="pill-btn" href="/login?intent=upload">Sign in or create account</a>
   <button class="pill-btn" type="button" onclick="document.getElementById('authPrompt').close()">Keep browsing</button>
 </dialog>
+<dialog id="shortsAuth" aria-labelledby="shortsAuthTitle" style="width:min(420px,90vw);padding:24px;border:1px solid #cad3e5;border-radius:16px">
+  <h2 id="shortsAuthTitle">Sign in to Shorts Everywhere</h2>
+  <p class="hint">Only signed-in members can upload videos. Your account is separate from your YouTube, Instagram, Facebook and TikTok logins.</p>
+  <form id="shortsAuthForm" style="display:grid;gap:10px;margin-top:12px">
+    <label for="saEmail" class="field-label">Email</label>
+    <input id="saEmail" type="email" autocomplete="email" required>
+    <label for="saPassword" class="field-label">Password <span class="hint" id="saPwHint" hidden>(at least 8 characters)</span></label>
+    <input id="saPassword" type="password" autocomplete="current-password" minlength="8" required>
+    <p id="saError" role="alert" style="margin:0;color:#d33"></p>
+    <button type="submit" class="retry-btn" id="saSubmit">Sign in</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button type="button" class="pill-btn" id="saToggle">New here? Create an account</button>
+      <button type="button" class="pill-btn" id="saClose">Not now</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="connectionDialog" aria-labelledby="connectionTitle" style="width:min(1240px,94vw);max-height:94vh;padding:16px;border:1px solid #cad3e5;border-radius:12px;box-sizing:border-box">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><h2 id="connectionTitle">Connect platform</h2><button type="button" class="pill-btn" id="connectionDone">Done / Close</button></div>
   <p id="connectionStatus" role="status" aria-live="polite">Opening your private browser…</p>
@@ -1156,11 +1172,12 @@
   </form>
   <p class="hint">This is your private server browser. Closing this view keeps your platform sessions saved. Posting waits until you close the sign-in view.</p>
 </dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script>
 // The home page is public; private actions require a signed-in account.
 let currentUser = null;
 function promptSignIn() {
-  const dialog = document.getElementById('authPrompt');
+  const dialog = document.getElementById(SUPA ? 'shortsAuth' : 'authPrompt');
   if (!dialog.open) dialog.showModal();
 }
 async function requireSignIn() {
@@ -1174,11 +1191,26 @@ async function requireSignIn() {
 const HELPER = /(^|\.)minefoundation\.org$/.test(location.hostname) || new URLSearchParams(location.search).has('helper')
   ? 'http://127.0.0.1:8765' : '';
 const api = url => HELPER && typeof url === 'string' && /^\/(api|uploads|thumbs|ws)\b/.test(url) ? HELPER + url : url;
+// With the helper (on minefoundation.org, or the page it serves itself) app accounts are Supabase Auth in the
+// shorts-everywhere project; the helper refuses app requests without a valid access token.
+const SUPA = !!HELPER || (/^(127\.0\.0\.1|localhost)$/.test(location.hostname) && location.port === '8765');
+const sb = SUPA && window.supabase
+  ? window.supabase.createClient('https://xzbsyxvovxryisqppbbr.supabase.co', 'sb_publishable_0vTD_B0vyvQdrnRvxt_dVA_hsJKZfYL')
+  : null;
+async function accessToken() {
+  if (!sb) return '';
+  const { data } = await sb.auth.getSession();
+  return data.session ? data.session.access_token : '';
+}
 let helperMissing = false;
 const originalFetch = window.fetch.bind(window);
 window.fetch = async (url, options = {}) => {
   const headers = new Headers(options.headers || {});
   if (options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase())) headers.set('X-Shorts-Request', '1');
+  if (SUPA && typeof url === 'string' && url.startsWith('/api/')) {
+    const token = await accessToken();
+    if (token) headers.set('Authorization', 'Bearer ' + token);
+  }
   const response = await originalFetch(api(url), {...options, headers});
   if (response.status === 401) {
     currentUser = null;
@@ -1189,12 +1221,23 @@ window.fetch = async (url, options = {}) => {
   }
   return response;
 };
-const authReady = originalFetch(api('/api/auth/me')).then(r => r.ok ? r.json() : null).catch(() => { helperMissing = !!HELPER; return null; }).then(user => {
+async function supaUser() {
+  const [helperUp, token] = await Promise.all([
+    originalFetch(api('/api/helper/info')).then(r => r.ok).catch(() => false), accessToken()]);
+  helperMissing = !helperUp;
+  if (!token) return null;
+  const { data } = await sb.auth.getUser();  // checks the session with Supabase, not just local storage
+  return data && data.user ? { id: data.user.id, email: data.user.email, local: true } : null;
+}
+const authReady = (SUPA
+  ? (sb ? supaUser() : Promise.resolve(null))
+  : originalFetch(api('/api/auth/me')).then(r => r.ok ? r.json() : null).catch(() => null)
+).then(user => {
   currentUser = user;
-  const local = !!(user && user.local) || !!HELPER;  // no app accounts with the local helper
-  document.getElementById('signIn').hidden = !!user || local;
+  document.getElementById('signIn').hidden = !!user;
   document.getElementById('signOut').hidden = !user;
-  document.getElementById('acctMenu').hidden = !user || local;
+  document.getElementById('acctMenu').hidden = !user;
+  if (SUPA && user) document.querySelector('#acctBtn .acct-label').textContent = user.email;
   document.getElementById('helperInstall').hidden = !helperMissing;
   if (helperMissing) {
     for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Helper not running';
@@ -1205,6 +1248,7 @@ const authReady = originalFetch(api('/api/auth/me')).then(r => r.ok ? r.json() :
   document.getElementById('signedInEmail').textContent = '';
   if (!user) {
     for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Not connected';
+    if (SUPA) setReady(false, 'Sign in to start');
     document.getElementById('browserMessage').textContent = 'Connect your platforms after signing in.';
     document.getElementById('canvasOverlay').textContent = 'Your posting progress will appear here.';
   }
@@ -1217,9 +1261,59 @@ const authReady = originalFetch(api('/api/auth/me')).then(r => r.ok ? r.json() :
   document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 })();
 document.getElementById('signOut').onclick = async () => {
+  if (SUPA) {
+    if (sb) await sb.auth.signOut();
+    location.reload();
+    return;
+  }
   const response = await fetch('/api/auth/logout', {method: 'POST'});
   if (response.ok) location.replace('/');
 };
+document.getElementById('signIn').addEventListener('click', e => {
+  if (!SUPA) return;  // the hosted server has its own /login page
+  e.preventDefault();
+  promptSignIn();
+});
+/* Supabase sign-in / create account (helper mode only) */
+(() => {
+  const $ = id => document.getElementById(id);
+  let creating = false;
+  const paint = () => {
+    $('shortsAuthTitle').textContent = creating ? 'Create your account' : 'Sign in to Shorts Everywhere';
+    $('saSubmit').textContent = creating ? 'Create account' : 'Sign in';
+    $('saToggle').textContent = creating ? 'Already have an account? Sign in' : 'New here? Create an account';
+    $('saPassword').autocomplete = creating ? 'new-password' : 'current-password';
+    $('saPwHint').hidden = !creating;
+    $('saError').textContent = '';
+  };
+  $('saToggle').onclick = () => { creating = !creating; paint(); };
+  $('saClose').onclick = () => $('shortsAuth').close();
+  const friendly = msg => /invalid login credentials/i.test(msg) ? 'Wrong email or password.'
+    : /already registered|already exists/i.test(msg) ? 'That email already has an account. Sign in instead.'
+    : /password/i.test(msg) && /(short|least|weak)/i.test(msg) ? 'Use a password of at least 8 characters.'
+    : /fetch|network/i.test(msg) ? "Couldn't reach the sign-in service. Check your connection and try again."
+    : msg;
+  $('shortsAuthForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!sb) { $('saError').textContent = "Sign-in couldn't load. Reload the page and try again."; return; }
+    const email = $('saEmail').value.trim(), password = $('saPassword').value;
+    $('saSubmit').disabled = true; $('saError').textContent = '';
+    try {
+      const { data, error } = creating
+        ? await sb.auth.signUp({ email, password })
+        : await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (!data.session) throw new Error('Your account was created, but signing in needs a confirmed email. Contact support.');
+      const recorded = await sb.rpc('shorts_record_login');  // saves this sign-in to the shorts_users table
+      if (recorded.error) console.error('Recording the sign-in failed:', recorded.error);
+      location.reload();
+    } catch (err) {
+      $('saError').textContent = friendly(err.message || String(err));
+    } finally {
+      $('saSubmit').disabled = false;
+    }
+  });
+})();
 
 const PLAT_BADGE = {
   youtube: { bg: 'var(--yt)', ic: '▶' },
@@ -1597,7 +1691,9 @@ async function connectWs() {
   if (hostedPending || manualSignInActive) return;
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   clearTimeout(wsTimer);
-  ws = new WebSocket(HELPER ? HELPER.replace(/^http/, 'ws') + '/ws' : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+  let wsUrl = HELPER ? HELPER.replace(/^http/, 'ws') + '/ws' : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  if (SUPA) wsUrl += '?token=' + encodeURIComponent(await accessToken());  // a WebSocket can't send headers
+  ws = new WebSocket(wsUrl);
   ws.onmessage = ev => {
     const m = JSON.parse(ev.data);
     if (m.t === 'no-browser') {
