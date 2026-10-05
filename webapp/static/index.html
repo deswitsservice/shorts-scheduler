@@ -869,7 +869,7 @@
     <div class="tag">Upload once. Post everywhere. <span class="tag-heart">&#10084;</span></div>
   </div>
   <div class="right">
-    <span id="signedInEmail" hidden></span><button class="pill-btn" id="themeToggle" type="button" aria-label="Switch between dark and light theme" title="Switch theme">🌙</button><a class="pill-btn" id="signIn" href="/login">Sign in</a>
+    <span id="signedInEmail" hidden></span><button class="pill-btn" id="themeToggle" type="button" aria-label="Switch between dark and light theme" title="Switch theme">🌙</button><a class="pill-btn" id="signIn" href="/login">Sign in</a><button class="pill-btn" id="signUp" type="button" hidden>Sign up</button>
     <div class="acct-menu" id="acctMenu" hidden>
       <button type="button" id="acctBtn" aria-haspopup="menu" aria-expanded="false"><span class="avatar"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="8.5" r="4"/><path d="M4 21c.6-4.3 4-6.5 8-6.5s7.4 2.2 8 6.5z"/></svg></span><span class="acct-label">My Account</span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
       <div class="acct-drop" id="acctDrop" role="menu" hidden><button type="button" id="signOut" role="menuitem">Sign out</button></div>
@@ -1215,6 +1215,7 @@ window.fetch = async (url, options = {}) => {
   if (response.status === 401) {
     currentUser = null;
     document.getElementById('signIn').hidden = false;
+    document.getElementById('signUp').hidden = !SUPA;
     document.getElementById('signOut').hidden = true;
     document.getElementById('acctMenu').hidden = true;
     if (options.method && options.method.toUpperCase() !== 'GET') promptSignIn();
@@ -1235,9 +1236,9 @@ const authReady = (SUPA
 ).then(user => {
   currentUser = user;
   document.getElementById('signIn').hidden = !!user;
+  document.getElementById('signUp').hidden = !SUPA || !!user;  // the hosted server signs up on its /login page
   document.getElementById('signOut').hidden = !user;
-  document.getElementById('acctMenu').hidden = !user;
-  if (SUPA && user) document.querySelector('#acctBtn .acct-label').textContent = user.email;
+  document.getElementById('acctMenu').hidden = !user;  // shows "My Account", never the email
   document.getElementById('helperInstall').hidden = !helperMissing;
   if (helperMissing) {
     for (const id of ['t-youtube', 't-meta1', 't-meta2', 't-tiktok']) document.getElementById(id).textContent = 'Helper not running';
@@ -1272,8 +1273,9 @@ document.getElementById('signOut').onclick = async () => {
 document.getElementById('signIn').addEventListener('click', e => {
   if (!SUPA) return;  // the hosted server has its own /login page
   e.preventDefault();
-  promptSignIn();
+  openShortsAuth(false);
 });
+document.getElementById('signUp').addEventListener('click', () => openShortsAuth(true));
 /* Supabase sign-in / create account (helper mode only) */
 (() => {
   const $ = id => document.getElementById(id);
@@ -1287,6 +1289,10 @@ document.getElementById('signIn').addEventListener('click', e => {
     $('saError').textContent = '';
   };
   $('saToggle').onclick = () => { creating = !creating; paint(); };
+  window.openShortsAuth = create => {  // header Sign in / Sign up
+    creating = !!create; paint();
+    if (!$('shortsAuth').open) $('shortsAuth').showModal();
+  };
   $('saClose').onclick = () => $('shortsAuth').close();
   const friendly = msg => /invalid login credentials/i.test(msg) ? 'Wrong email or password.'
     : /already registered|already exists/i.test(msg) ? 'That email already has an account. Sign in instead.'
