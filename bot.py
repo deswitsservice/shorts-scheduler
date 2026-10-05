@@ -66,6 +66,26 @@ def chrome_running():
         return False
 
 
+def ensure_window(browser=None):
+    """macOS Chrome keeps running after its last window is closed (Cmd-W), and in that state every cookie read and
+    new tab fails with "Browser context management is not supported" (confirmed live on 2026-10-04: the dashboard
+    stuck on "Checking…"). Reopen one blank window off-screen when there are none. `browser`: a CDP-connected
+    Playwright Browser; without one this connects itself."""
+    def fix(b):
+        if b.contexts and b.contexts[0].pages:
+            return
+        session = b.new_browser_cdp_session()
+        try:
+            session.send("Target.createTarget", {"url": "about:blank", "newWindow": True, "background": True,
+                                                 "left": -2400, "top": -2400})
+        finally:
+            session.detach()
+    if browser is not None:
+        return fix(browser)
+    with sync_playwright() as p:
+        fix(p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True))
+
+
 def _move_running_chrome_offscreen():
     """-g/-j (below) only affect Chrome's own startup -- they can't do anything about a window that's
     already open in the foreground when start_chrome() is called on an already-running instance (confirmed
