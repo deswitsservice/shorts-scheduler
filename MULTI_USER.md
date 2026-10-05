@@ -112,6 +112,31 @@ never touch any server, so hosting is just static files.
   people's posts. The owner's own server launcher must set both to keep the old behaviour.
 - The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
 
+### Live view and account status speed (2026-10-05)
+
+The owner reported a long wait before the live view appeared. Timing printouts in a local debug copy (never committed)
+showed why. Each live view started its own Playwright driver: 2.4–3.6s to start, plus 1–1.6s to connect over CDP. Each
+`/api/accounts` call did the same through `sync_playwright` and took 4–6s. The page asks for accounts every 6s, so
+those starts ran almost back to back and competed for the CPU with the live view.
+
+- **Live view:** `engine._live_browser()` keeps one Playwright driver and one CDP connection for every `/ws`. It
+  reconnects only after Chrome restarts and never closes the shared connection per view. `bot.chrome_running()` (a
+  blocking HTTP call) now runs off the event loop.
+- **Account status:** `bot.browser_cookie_names()` reads cookies with `Storage.getCookies` over one plain WebSocket
+  (`bot.cdp_browser_calls`, from the `websockets` package, which sends no Origin header so Chrome accepts it). If no
+  window is open, it first reopens a hidden blank one, keeping `ensure_window`'s fix. No Playwright involved.
+
+Measured on the owner's Mac, page served on another port with `?helper`, this branch's helper:
+
+| | Before | After |
+|---|---|---|
+| `/api/accounts` | 4–6s | 0.47s first, then 0.05–0.08s |
+| Live view "Ready" after page load | 9.5–10.9s | 1.2s first load, 0.7s next load |
+| Account status shown after page load | about 5.7s | 0.7–1.2s |
+
+The live https site showed the same 9.5–10.9s before the fix. Account results were unchanged (YouTube, Meta, TikTok
+all true).
+
 ### App accounts (added 2026-10-05)
 
 Only signed-in members can use the app. Accounts live in their **own** Supabase project, **shorts-everywhere**
