@@ -460,13 +460,19 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             # rejects Playwright's eval-based predicate outright (confirmed live -- "violates this
             # document's Trusted Type assignment requirements"). Poll the same element's text from the
             # Python side instead, which only uses native accessibility/DOM reads, not in-page eval.
+            # Once the transfer ends the text moves on: "Upload complete", then "Processing up to HD", "Checking",
+            # "Checks complete. No issues found.". A short upload can skip straight past "Upload complete" (seen
+            # live on 2026-10-05: the job sat waiting for it while Studio already said "Checks complete"), so any
+            # of these counts, as long as it no longer says "Uploading".
             progress = pg.locator("ytcp-video-upload-progress")
+            done = re.compile(r"Upload complete|Processing|Checking|Checks complete")
             for _ in range(600):
-                if progress.count() and "Upload complete" in progress.inner_text():
+                text = progress.inner_text() if progress.count() else ""
+                if done.search(text) and "Uploading" not in text:
                     break
                 pg.wait_for_timeout(1000)
             else:
-                sys.exit("youtube: upload never reached 'Upload complete' within 10 minutes")
+                sys.exit("youtube: the upload didn't finish within 10 minutes")
             on_step("Setting audience and content options")
             mfk_name = "VIDEO_MADE_FOR_KIDS_MFK" if vid.get("made_for_kids") else "VIDEO_MADE_FOR_KIDS_NOT_MFK"
             pg.locator(f"[name={mfk_name}]").first.click()
