@@ -451,14 +451,11 @@ def _accounts():
     if not bot.chrome_running():
         return {"chrome": False, "youtube": False, "meta": False, "tiktok": False}
     res = {"chrome": True, "youtube": False, "meta": False, "tiktok": False}
-    with sync_playwright() as p:
-        b = p.chromium.connect_over_cdp(CDP, no_defaults=True)
-        bot.ensure_window(b)
-        names = {(c["domain"].lstrip("."), c["name"]) for c in b.contexts[0].cookies()}
-        has = lambda dom, name: any(d.endswith(dom) and n == name for d, n in names)  # noqa: E731
-        res["youtube"] = has("youtube.com", "SAPISID") or has("google.com", "SAPISID")
-        res["meta"] = has("facebook.com", "c_user")
-        res["tiktok"] = has("tiktok.com", "sessionid")
+    names = bot.browser_cookie_names()  # plain CDP, no Playwright startup: this runs every few seconds
+    has = lambda dom, name: any(d.endswith(dom) and n == name for d, n in names)  # noqa: E731
+    res["youtube"] = has("youtube.com", "SAPISID") or has("google.com", "SAPISID")
+    res["meta"] = has("facebook.com", "c_user")
+    res["tiktok"] = has("tiktok.com", "sessionid")
     return res
 
 
@@ -510,51 +507,68 @@ async def find_automation_page(ctx, target_id):
     return None
 
 
+_live = {"pw": None, "browser": None}
+_live_lock = asyncio.Lock()
+
+
+async def _live_browser():
+    """One Playwright driver and CDP connection shared by every live view. Starting Playwright per view cost
+    3.6s plus 1.6s to connect on the owner's Mac, so the panel sat empty for 5-10s on each page load (2026-10-05).
+    Reconnects when Chrome was restarted. Never closed per view; closing would only drop this shared connection."""
+    async with _live_lock:
+        browser = _live["browser"]
+        if browser is not None and browser.is_connected():
+            return browser
+        if _live["pw"] is None:
+            _live["pw"] = await async_playwright().start()
+        _live["browser"] = await _live["pw"].chromium.connect_over_cdp(CDP, no_defaults=True)
+        return _live["browser"]
+
+
 @app.websocket("/ws")
 async def browser_ws(ws: WebSocket):
     """Read-only snapshots of the posting tab, independent of OS focus or tab visibility."""
     import base64
     await ws.accept()
-    if not bot.chrome_running():
+    if not await asyncio.get_running_loop().run_in_executor(None, bot.chrome_running):
         await ws.send_json({"t": "no-browser"})
         await ws.close()
         return
-    async with async_playwright() as p:
-        try:
-            browser = await p.chromium.connect_over_cdp(CDP, no_defaults=True)
-            ctx = browser.contexts[0]
-        except Exception:
-            await ws.close()
-            return
+    try:
+        browser = await _live_browser()
+        ctx = browser.contexts[0]
+    except Exception:
+        await ws.close()
+        return
 
-        async def stream():
-            page, target = None, None
-            while True:
-                wanted = bot.ACTIVE_TARGET_ID
-                if wanted != target or page is None or page.is_closed():
-                    page = await find_automation_page(ctx, wanted)
-                    target = wanted
-                if page is None:
-                    await ws.send_json({"t": "idle"})
-                else:
-                    try:
-                        # Screenshots work independently of the foreground tab; do not activate it.
-                        frame = await page.screenshot(type="jpeg", quality=65, timeout=4000)
-                        if wanted == bot.ACTIVE_TARGET_ID:
-                            await ws.send_json({"t": "frame", "d": base64.b64encode(frame).decode()})
-                    except Exception:
-                        page = None
-                        await ws.send_json({"t": "waiting"})
-                await asyncio.sleep(0.8)
+    async def stream():
+        page, target = None, None
+        while True:
+            wanted = bot.ACTIVE_TARGET_ID
+            if wanted != target or page is None or page.is_closed():
+                page = await find_automation_page(ctx, wanted)
+                target = wanted
+            if page is None:
+                await ws.send_json({"t": "idle"})
+            else:
+                try:
+                    # Screenshots work independently of the foreground tab; do not activate it.
+                    frame = await page.screenshot(type="jpeg", quality=65, timeout=4000)
+                    if wanted == bot.ACTIVE_TARGET_ID:
+                        await ws.send_json({"t": "frame", "d": base64.b64encode(frame).decode()})
+                except Exception:
+                    page = None
+                    await ws.send_json({"t": "waiting"})
+            await asyncio.sleep(0.8)
 
-        sender = asyncio.create_task(stream())
-        receiver = asyncio.create_task(ws.receive_text())
-        try:
-            await asyncio.wait([sender, receiver], return_when=asyncio.FIRST_COMPLETED)
-        finally:
-            sender.cancel()
-            receiver.cancel()
-            await asyncio.gather(sender, receiver, return_exceptions=True)
+    sender = asyncio.create_task(stream())
+    receiver = asyncio.create_task(ws.receive_text())
+    try:
+        await asyncio.wait([sender, receiver], return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        sender.cancel()
+        receiver.cancel()
+        await asyncio.gather(sender, receiver, return_exceptions=True)
 
 
 @app.get("/")

@@ -86,6 +86,39 @@ def ensure_window(browser=None):
         fix(p.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}", no_defaults=True))
 
 
+def cdp_browser_calls(*calls, timeout=10):
+    """Send browser-level CDP commands [(method, params), ...] over one plain WebSocket and return their results.
+    For quick reads like cookies: starting Playwright costs 2.5-3.5s per call on the owner's Mac, so the
+    dashboard's account check (every 6s) took 4-6s and kept the CPU busy enough to delay the live view too
+    (measured 2026-10-05). Chrome rejects debugger connections that send an Origin header; this client sends none."""
+    from websockets.sync.client import connect
+    with urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/version", timeout=2) as resp:
+        url = json.load(resp)["webSocketDebuggerUrl"]
+    results = []
+    with connect(url, open_timeout=timeout, max_size=None) as ws:
+        for n, (method, params) in enumerate(calls, 1):
+            ws.send(json.dumps({"id": n, "method": method, "params": params or {}}))
+            while True:
+                msg = json.loads(ws.recv(timeout=timeout))
+                if msg.get("id") == n:
+                    break
+            if "error" in msg:
+                raise RuntimeError(f"{method}: {msg['error'].get('message', msg['error'])}")
+            results.append(msg.get("result", {}))
+    return results
+
+
+def browser_cookie_names():
+    """{(domain, name)} of every cookie in the automation profile, reopening a hidden window first if all windows
+    were closed (cookie reads fail with no window open; see ensure_window)."""
+    targets, = cdp_browser_calls(("Target.getTargets", None))
+    if not any(t.get("type") == "page" for t in targets.get("targetInfos", [])):
+        cdp_browser_calls(("Target.createTarget", {"url": "about:blank", "newWindow": True, "background": True,
+                                                   "left": -2400, "top": -2400}))
+    cookies, = cdp_browser_calls(("Storage.getCookies", None))
+    return {(c["domain"].lstrip("."), c["name"]) for c in cookies.get("cookies", [])}
+
+
 def _move_running_chrome_offscreen():
     """-g/-j (below) only affect Chrome's own startup -- they can't do anything about a window that's
     already open in the foreground when start_chrome() is called on an already-running instance (confirmed
