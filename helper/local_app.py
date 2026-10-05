@@ -7,7 +7,10 @@ The dashboard at https://minefoundation.org talks to this process directly from 
 videos or logins goes through a server. The same dashboard is also served here, at http://127.0.0.1:8765.
 
 Settings live in ~/.shorts-everywhere/config.json (all optional):
-  {"support_url": "ko-fi.com/you", "yt_no_link_channels": ["UC..."], "meta_asset_id": "...", "meta_business_id": "..."}
+  {"support_url": "ko-fi.com/you", "yt_no_link_channels": ["UC..."], "meta_asset_id": "...", "meta_business_id": "...",
+   "youtube_channel": "UC..."}
+youtube_channel is the channel posts go to when a job doesn't name one; if YouTube Studio is on a different channel the
+post stops instead of uploading to the wrong one.
 """
 import json, os, sys, time, urllib.error, urllib.request
 from pathlib import Path
@@ -20,7 +23,7 @@ ORIGINS = {"https://minefoundation.org", "https://www.minefoundation.org",
 ORIGINS |= {o.strip().rstrip("/") for o in os.environ.get("SHORTS_EXTRA_ORIGINS", "").split(",") if o.strip()}
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 SETTINGS = {"support_url": "SHORTS_SUPPORT_URL", "meta_asset_id": "SHORTS_META_ASSET_ID",
-            "meta_business_id": "SHORTS_META_BUSINESS_ID"}
+            "meta_business_id": "SHORTS_META_BUSINESS_ID", "youtube_channel": "SHORTS_YOUTUBE_CHANNEL"}
 # App accounts live in the shorts-everywhere Supabase project (supabase/ in this repo). Both values are public by
 # design (the same ones the dashboard ships); the helper only uses them to ask Supabase whether a token is valid.
 SUPABASE_URL = os.environ.get("SHORTS_SUPABASE_URL", "https://xzbsyxvovxryisqppbbr.supabase.co")

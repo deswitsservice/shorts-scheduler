@@ -58,7 +58,7 @@ main() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key><array><string>$APP/venv/bin/python</string><string>-m</string><string>helper.local_app</string></array>
+  <key>ProgramArguments</key><array><string>$APP/venv/bin/python</string><string>-u</string><string>-m</string><string>helper.local_app</string></array>
   <key>WorkingDirectory</key><string>$APP/app</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
