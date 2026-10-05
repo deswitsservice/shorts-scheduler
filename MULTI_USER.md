@@ -136,9 +136,16 @@ account `shorts-everywhere`).
   returns 503 and doesn't let anyone in. The page itself, `/static`, `/uploads` and `/thumbs` stay open
   (`<img>`/`<video>` can't send a token, and media names are random). The preflight allow-list now includes
   `Authorization`.
-- **Dashboard** (`SUPA` mode = on minefoundation.org, or the page served by the helper on port 8765): Sign in opens the
-  dialog. The account menu shows the email, and Sign out calls `sb.auth.signOut()`. Every `/api/` fetch gets the current
-  access token, and a 401 brings the sign-in dialog back. The hosted multi-user server keeps its own `/login`.
+- **Dashboard** (`SUPA` mode = on minefoundation.org, or the page served by the helper on port 8765): the header shows
+  **Sign in** and **Sign up** while signed out, and each opens the dialog in that mode (`openShortsAuth(create)`). Once
+  signed in, the account menu says "My Account" and never shows the email (the owner's request, 2026-10-05). Sign out
+  calls `sb.auth.signOut()`. Every `/api/` fetch gets the current access token, and a 401 brings back the sign-in dialog
+  and both header buttons. The hosted multi-user server keeps its own `/login` and has no Sign up button.
+  Verified 2026-10-05 in headless Chrome with this branch's helper:
+  - Signed out, the header showed Sign in and Sign up.
+  - Sign up opened "Create your account", and Sign in opened "Sign in to Shorts Everywhere".
+  - After creating an account, the header showed only "My Account", and the email appeared nowhere on the page.
+  - The test account was deleted afterwards.
 - **Upgrading**: a helper installed before this change doesn't allow the `Authorization` header in its preflight, so it
   stops working with the new site until `curl -fsSL https://minefoundation.org/install.sh | bash` is run again.
 
