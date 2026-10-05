@@ -42,7 +42,13 @@ main() {
   "$UV" pip install --quiet --python "$APP/venv/bin/python" -r "$APP/app.new/helper/requirements.txt"
 
   # Swap in the new code only once everything installed, so a failed update leaves the old helper working.
+  # bootout returns before launchd has finished removing the service; bootstrapping again too early fails with
+  # "Bootstrap failed: 5: Input/output error" (hit on the first re-install, 2026-10-04). Wait until it's gone.
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
   rm -rf "$APP/app" && mv "$APP/app.new" "$APP/app"
 
   say "Starting the helper (and at every login)…"
@@ -60,7 +66,12 @@ main() {
   <key>StandardErrorPath</key><string>$APP/helper.log</string>
 </dict></plist>
 PLIST
-  launchctl bootstrap "gui/$(id -u)" "$PLIST"
+  local tries=0
+  until launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null; do
+    tries=$((tries + 1))
+    [ "$tries" -lt 5 ] || die "macOS wouldn't start the helper (launchctl bootstrap failed). Try running this again."
+    sleep 2
+  done
 
   for _ in $(seq 1 60); do
     if curl -fsS "http://127.0.0.1:$PORT/api/helper/info" >/dev/null 2>&1; then

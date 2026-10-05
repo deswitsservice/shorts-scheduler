@@ -120,3 +120,23 @@ the install card showed while the helper was down; after the helper started, the
 (Connect buttons, "Browser is off", cross-origin POST and `/api/jobs` worked, no console errors); the same page served
 by the helper behaved the same. Not tested: a real https page on minefoundation.org reaching the helper (needs deployment),
 and a real platform sign-in through `/api/connect`.
+
+Live, 2026-10-04 (after deploying through waypoint's workflow; the old Wanderly build was backed up on the server to
+`~/backups/minefoundation-wanderly`). `curl -fsSL https://minefoundation.org/install.sh | bash` installed and started the
+helper on the owner's Mac. Headless Chrome on https://minefoundation.org then found three bugs, fixed here:
+- **Live view 404:** uvicorn in the helper's venv had no WebSocket library ("No supported WebSocket library detected"),
+  so every `/ws` upgrade got a 404. `websockets` is now in `helper/requirements.txt`.
+- **Accounts stuck on "Checking…":** macOS Chrome keeps running after its last window is closed, and then
+  `Storage.getCookies` fails with "Browser context management is not supported" (posting would fail the same way).
+  `bot.ensure_window()` reopens one blank window off-screen through `Target.createTarget`; `_accounts()` and
+  `run_job()` call it.
+- **Re-running the installer (updating) left the helper stopped:** `launchctl bootout` returns before launchd finishes,
+  so the immediate `bootstrap` failed with "Bootstrap failed: 5: Input/output error". The installer now waits for the
+  old service to go away and retries the bootstrap up to 5 times.
+
+Verified after the fixes: the installer ran twice in a row over the existing install and the helper came back both
+times. With every helper Chrome window closed, `/api/accounts` answered in about 2.5s with `chrome: true`. The live https
+page, with Chrome's local-network permission granted, showed the dashboard: no install card, "Connect the missing
+platforms", Connect buttons, and the `/ws` live view connected and showing "Ready". The only failed requests were
+GoDaddy's injected `csp.secureserver.net` tracker. Without that permission, headless Chrome (which can't show the prompt)
+is refused by CORS ("Permission was denied") and the page shows the install card, which tells people to choose Allow.

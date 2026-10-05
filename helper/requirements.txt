@@ -2,6 +2,8 @@
 # `playwright install` browser download is needed. The video maker additionally needs ffmpeg and faster-whisper.
 fastapi>=0.115
 uvicorn>=0.30
+# uvicorn needs a WebSocket library for the live view (/ws); without one every upgrade got a 404 (2026-10-04).
+websockets>=12
 python-multipart>=0.0.9
 pillow>=10
 playwright>=1.60

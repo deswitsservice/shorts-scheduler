@@ -162,6 +162,10 @@ def run_job(job):
             step["state"], step["error"] = "failed", "The browser isn't running, so nothing was posted. Open it (python3 bot.py login) and try again."
         job["finished"] = time.time()
         return
+    try:
+        bot.ensure_window()
+    except Exception:  # noqa: BLE001
+        pass  # the platform step reports a real failure with a clearer message
     bot.ACTIVE_TARGET_ID = None
     job["started"] = time.time()
     for plat in job["platforms"]:
@@ -449,6 +453,7 @@ def _accounts():
     res = {"chrome": True, "youtube": False, "meta": False, "tiktok": False}
     with sync_playwright() as p:
         b = p.chromium.connect_over_cdp(CDP, no_defaults=True)
+        bot.ensure_window(b)
         names = {(c["domain"].lstrip("."), c["name"]) for c in b.contexts[0].cookies()}
         has = lambda dom, name: any(d.endswith(dom) and n == name for d, n in names)  # noqa: E731
         res["youtube"] = has("youtube.com", "SAPISID") or has("google.com", "SAPISID")
