@@ -119,6 +119,35 @@ def browser_cookie_names():
     return {(c["domain"].lstrip("."), c["name"]) for c in cookies.get("cookies", [])}
 
 
+def unminimize_windows():
+    """Un-minimize every automation window, parking it off-screen instead. A minimized Chrome window isn't
+    rendered, so mid-job screenshots hit the 30s timeout and clicks wait forever for the page to settle (the owner
+    minimized the posting browser on 2026-10-05 and posts failed with "Page.screenshot: Timeout 30000ms").
+    Returns how many windows it restored. Plain CDP, cheap enough to call every couple of seconds."""
+    targets, = cdp_browser_calls(("Target.getTargets", None))
+    pages = [t["targetId"] for t in targets.get("targetInfos", []) if t.get("type") == "page"]
+    if not pages:
+        return 0
+    windows = cdp_browser_calls(*[("Browser.getWindowForTarget", {"targetId": t}) for t in pages])
+    minimized = {w["windowId"] for w in windows if w.get("bounds", {}).get("windowState") == "minimized"}
+    calls = []
+    for wid in minimized:  # windowState and position can't change in the same call
+        calls += [("Browser.setWindowBounds", {"windowId": wid, "bounds": {"windowState": "normal"}}),
+                  ("Browser.setWindowBounds", {"windowId": wid, "bounds": {"left": -2400, "top": -2400}})]
+    if calls:
+        cdp_browser_calls(*calls)
+    return len(minimized)
+
+
+def save_shot(pg, name):
+    """Diagnostic screenshot into shots/. Only for troubleshooting, so it must never fail or stall a posting step."""
+    try:
+        _restore_if_minimized(pg)
+        pg.screenshot(path=os.path.join(HERE, "shots", name), timeout=10000)
+    except Exception as exc:  # noqa: BLE001
+        print(f"screenshot {name} skipped: {str(exc).splitlines()[0][:120]}")
+
+
 def _move_running_chrome_offscreen():
     """-g/-j (below) only affect Chrome's own startup -- they can't do anything about a window that's
     already open in the foreground when start_chrome() is called on an already-running instance (confirmed
@@ -391,7 +420,9 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             channel = resolve_channel(pg)
             expected = vid.get("youtube_channel", "").strip()
             if expected and expected != channel:
-                sys.exit(f"youtube: signed-in channel is {channel}, not requested {expected}. Switch channels in Chrome before retrying.")
+                sys.exit(f"youtube: YouTube Studio is on channel {channel}, not {expected}, so nothing was uploaded. "
+                         "Click Connect YouTube, switch to the right channel (profile picture > Switch account), "
+                         "click Done, then retry.")
             vid.setdefault("accounts", {})["youtube"] = channel
             on_step(f"YouTube channel: {channel}")
             pg.goto(f"https://studio.youtube.com/channel/{channel}/videos/upload?d=ud")
@@ -457,7 +488,7 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
         elif when:
             on_step("Setting publish schedule")
             print("Schedule fields now read:", yt_fill_schedule(pg, when))
-        pg.screenshot(path=os.path.join(HERE, "shots", f"yt_{vid['id']}.png"))
+        save_shot(pg, f"yt_{vid['id']}.png")
         if commit and (when or now):
             on_step("Publishing video" if now else "Scheduling video")
             # Publishing before Studio's copyright/content checks finish raises a "We're still checking your
@@ -473,7 +504,7 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             anyway = pg.get_by_role("button", name="Publish anyway")
             if anyway.count() and anyway.first.is_visible():
                 if not pg.get_by_text(re.compile(r"Checks complete. No issues found")).count():
-                    pg.screenshot(path=os.path.join(HERE, "shots", f"yt_{vid['id']}_checks.png"))
+                    save_shot(pg, f"yt_{vid['id']}_checks.png")
                     sys.exit("youtube: Studio's content checks haven't passed yet; the video was left private. Check YouTube Studio.")
                 anyway.first.click()
             # A fixed 4s wait wasn't enough: Studio was still "Saving..." when the next platform reused this
@@ -487,7 +518,7 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
                     break
                 pg.wait_for_timeout(1000)
             else:
-                pg.screenshot(path=os.path.join(HERE, "shots", f"yt_{vid['id']}_unconfirmed.png"))
+                save_shot(pg, f"yt_{vid['id']}_unconfirmed.png")
                 sys.exit("youtube: Studio never confirmed the publish within 2 minutes; it may still be a draft. Check YouTube Studio.")
             on_step("Done")
             print("YouTube:", "published" if now else "scheduled", vid["id"], "" if now else f"for {when}")
@@ -628,6 +659,12 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
                     break
                 pg.wait_for_timeout(1000)
             nxt.click(); pg.wait_for_timeout(5000)
+        if now:
+            # Business Suite can reopen on the mode used last time; pick "Share now" explicitly rather than assume it.
+            share_now = pg.get_by_role("button", name="Share now")
+            if share_now.count():
+                on_step("Choosing Share now")
+                share_now.first.click(); pg.wait_for_timeout(1500)
         if not now:
             on_step("Setting publish schedule")
             pg.get_by_role("button", name="Schedule").first.click(); pg.wait_for_timeout(1500)
@@ -660,9 +697,14 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
             if datev != when.strftime("%b %-d, %Y"):
                 sys.exit(f"Date shows {datev!r}; only same-day scheduling is automated so far")
         pg.mouse.move(350, 300); pg.mouse.wheel(0, -600); pg.wait_for_timeout(500)
-        pg.screenshot(path=os.path.join(HERE, "shots", f"meta_{target}_{vid['id']}.png"))
+        save_shot(pg, f"meta_{target}_{vid['id']}.png")
         print(f"{target}: ready to {'post now' if now else f'post at {when:%b %-d %-I:%M %p}'}")
         if commit:
+            hours = pg.locator("input[aria-label='hours']")
+            if now and hours.count() and hours.first.is_visible():
+                save_shot(pg, f"meta_{target}_{vid['id']}_still_scheduled.png")
+                sys.exit(f"{target}: asked to post now, but Business Suite is still set to Schedule; nothing was "
+                         "posted. Retry, or switch it to Share now in the posting browser.")
             on_step("Sharing post" if now else "Scheduling post")
             # "Share now"/"Schedule" (checked above via `when`) are the *mode-selector tabs*, not the
             # submit button -- clicking an already-selected tab is a no-op, which is exactly what
@@ -731,6 +773,18 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
             pg.keyboard.insert_text(caption); pg.wait_for_timeout(1200)
             if len(ed.inner_text().strip()) < min(20, len(caption)):
                 sys.exit("tiktok: caption did not go into the editor")
+        if now:
+            # Pick the immediate option explicitly instead of assuming TikTok Studio opened on it.
+            sched = pg.locator("input[value=schedule]")
+            if sched.count() and sched.first.is_checked():
+                on_step("Choosing Post now")
+                group = sched.first.get_attribute("name")
+                other = pg.locator(f"input[type=radio][name='{group}']:not([value=schedule])" if group
+                                   else "input[type=radio]:not([value=schedule])")
+                other.first.locator("xpath=..").click(); pg.wait_for_timeout(1000)
+                if sched.first.is_checked():
+                    save_shot(pg, f"tiktok_{vid['id']}_still_scheduled.png")
+                    sys.exit("tiktok: asked to post now, but TikTok Studio is still set to Schedule; nothing was posted.")
         if not now:
             on_step("Setting publish schedule")
             pg.locator("input[value=schedule]").locator("xpath=..").click(); pg.wait_for_timeout(1200)
@@ -769,7 +823,7 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
                 break
             pg.wait_for_timeout(1000)
         pg.mouse.move(600, 300); pg.mouse.wheel(0, 3000); pg.wait_for_timeout(800)
-        pg.screenshot(path=os.path.join(HERE, "shots", f"tiktok_{vid['id']}.png"))
+        save_shot(pg, f"tiktok_{vid['id']}.png")
         print(f"tiktok: ready to {'post now' if now else f'post at {when:%b %-d %-I:%M %p}'}, AI label {'on' if vid.get('ai_label') else 'off'}")
         if commit:
             on_step("Posting video" if now else "Scheduling video")
@@ -822,7 +876,7 @@ def youtube_thumbnail(title_start, thumb_path):
         pg.wait_for_timeout(2000)
         pg.locator("input[type=file][accept*='image']").first.set_input_files(thumb_path, timeout=60000)
         pg.wait_for_timeout(4000)
-        pg.screenshot(path=os.path.join(HERE, "shots", "yt_thumb_edit.png"))
+        save_shot(pg, "yt_thumb_edit.png")
         pg.locator("#save").click()
         pg.wait_for_timeout(5000)
         print("youtube: thumbnail saved for", title_start)

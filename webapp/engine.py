@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Internal single-workspace automation engine. Serve through authenticated server.py only."""
-import asyncio, datetime, os, re, shutil, sys, time, uuid
+import asyncio, datetime, os, re, shutil, sys, threading, time, uuid
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -168,6 +168,17 @@ def run_job(job):
         pass  # the platform step reports a real failure with a clearer message
     bot.ACTIVE_TARGET_ID = None
     job["started"] = time.time()
+    # Someone may minimize the posting browser mid-job; a minimized window isn't rendered, so screenshots time out
+    # and clicks never settle. Keep un-minimizing it (off-screen) while this job runs.
+    stop_watch = threading.Event()
+
+    def keep_unminimized():
+        while not stop_watch.wait(2):
+            try:
+                bot.unminimize_windows()
+            except Exception:  # noqa: BLE001
+                pass  # best effort; Chrome may be between tabs or restarting
+    threading.Thread(target=keep_unminimized, daemon=True).start()
     for plat in job["platforms"]:
         step = job["steps"][plat]
         if step["state"] == "done" or step["state"].startswith("checked"):
@@ -222,6 +233,7 @@ def run_job(job):
                 wait = RETRY_WAITS[min(attempt - 1, len(RETRY_WAITS) - 1)]
                 on_step(f"Attempt {attempt} failed ({step['error']}). Retrying in {wait}s (retry {attempt} of {MAX_RETRIES})...")
                 time.sleep(wait)
+    stop_watch.set()
     bot.ACTIVE_TARGET_ID = None
     job["current_platform"] = None
     job["finished"] = time.time()
@@ -307,7 +319,10 @@ async def schedule(
     vid = {"id": jid, "file": path, "title": title.strip(), "description": desc,
            "schedule": None if publish_now else when.replace("T", " ")[:16], "publish_now": publish_now,
            "made_for_kids": made_for_kids == "true", "story": story == "true", "thumbnail": thumb_path,
-           "thumb_title": thumb_title == "true", "ai_label": ai_label == "true", "youtube_channel": youtube_channel.strip(),
+           "thumb_title": thumb_title == "true", "ai_label": ai_label == "true",
+           # A Google account can own several channels; with none named, Studio posts to whichever was used last
+           # (video 10 went to Cold Case Chronicles instead of amoura, 2026-10-05). Fall back to the configured default.
+           "youtube_channel": youtube_channel.strip() or os.environ.get("SHORTS_YOUTUBE_CHANNEL", "").strip(),
            "instagram_account": instagram_account.strip(), "facebook_account": facebook_account.strip(), "accounts": {}}
     job = {"id": jid, "title": vid["title"], "when": "Now" if publish_now else vid["schedule"], "platforms": plats,
            "dry": dry == "true", "vid": vid, "accounts": vid["accounts"], "steps": {p: {"state": "queued", "log": []} for p in plats},
@@ -559,6 +574,10 @@ async def browser_ws(ws: WebSocket):
                 except Exception:
                     page = None
                     await ws.send_json({"t": "waiting"})
+                    try:  # a minimized posting browser can't be captured; restore it (off-screen) for the next frame
+                        await asyncio.get_running_loop().run_in_executor(None, bot.unminimize_windows)
+                    except Exception:
+                        pass
             await asyncio.sleep(0.8)
 
     sender = asyncio.create_task(stream())

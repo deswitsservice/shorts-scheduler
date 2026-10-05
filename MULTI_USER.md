@@ -112,6 +112,44 @@ never touch any server, so hosting is just static files.
   people's posts. The owner's own server launcher must set both to keep the old behaviour.
 - The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
 
+### Minimized posting browser, Post now, channel safety (2026-10-05)
+
+The owner reported three problems on the live site.
+- Posts failed with `Page.screenshot: Timeout 30000ms exceeded` after they minimized the posting browser.
+- The live view stayed on "Loading the posting page…".
+- A "Post now" seemed to schedule.
+
+The helper's pre-publish screenshots (`~/.shorts-everywhere/shots/`) showed that both YouTube runs of video 10 were set to
+**Public / Publish**. They also showed the 08:41 run uploading to **Cold Case Chronicles** (`UCg85UGSCLnoTM48RggRJmkQ`)
+instead of **amoura** (`UC4gsfYjRlgp36oWy54juMHw`): the Google account owns both, and with no channel given, Studio uses
+the one picked last. The helper log had none of the bot's `print` lines, because launchd ran Python with buffered output.
+
+- **Minimized window:** `bot.unminimize_windows()` (plain CDP) restores every minimized automation window and parks it
+  off-screen. `engine.run_job` runs it every 2s on a watchdog thread for the whole job. The live view calls it when a
+  frame fails. The six diagnostic screenshots in `bot.py` now go through `bot.save_shot()`, which un-minimizes first,
+  times out after 10s, and never fails or stalls the posting step.
+- **Post now:**
+  - Meta clicks the **Share now** mode explicitly. Right before the final click it stops with a clear error (and a
+    `*_still_scheduled.png` shot) if the schedule time fields are still showing.
+  - TikTok switches its radio away from `schedule` when that's selected, and stops if it stays selected.
+  - YouTube already selected Public explicitly.
+- **Default YouTube channel:** the `youtube_channel` setting in `config.json` (env `SHORTS_YOUTUBE_CHANNEL`) is used when
+  a job doesn't name a channel. `bot.youtube` already refuses a mismatched channel, and its message now explains how to
+  switch.
+- **Helper log:** the LaunchAgent now runs `python -u`, so the bot's progress lines reach `helper.log`.
+- **Owner's settings:** the owner's `~/.shorts-everywhere/config.json` didn't exist, so the minefoundation helper had been
+  running without the Meta Page pin (Amoura), the Ko-fi link and the Cold Case no-link rule that `start_app.sh` sets for
+  the old app. It now has all of those plus `youtube_channel` = amoura.
+
+Verified on the owner's idle helper Chrome:
+- I minimized its window over CDP. `unminimize_windows()` restored 1 window to `normal`, parked at left -1132 (macOS
+  won't place a window fully off-screen), and a screenshot then took 0.7s.
+- `save_shot()` on a re-minimized window saved the file in 1.3s.
+- `configure()` mapped `config.json` to `SHORTS_YOUTUBE_CHANNEL`, `SHORTS_META_ASSET_ID`, `SHORTS_META_BUSINESS_ID`,
+  `SHORTS_SUPPORT_URL` and `SHORTS_YT_NO_LINK_CHANNELS`.
+- Unit tests: 57/59, with the same 2 pre-existing `test_videomaker` failures.
+- Not exercised live: the Meta and TikTok "Post now" paths (they need real posts).
+
 ### Live view and account status speed (2026-10-05)
 
 The owner reported a long wait before the live view appeared. Timing printouts in a local debug copy (never committed)
