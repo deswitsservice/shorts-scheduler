@@ -208,6 +208,11 @@ def build_app():
 
 def main():
     import uvicorn
+    if sys.stdout is None or sys.stderr is None:
+        # Windows runs the helper with pythonw.exe (no console window), which leaves stdout/stderr as None; logging
+        # would fail. Send everything to the same helper.log the macOS LaunchAgent writes.
+        DATA.mkdir(parents=True, exist_ok=True)
+        sys.stdout = sys.stderr = open(DATA / "helper.log", "a", buffering=1, encoding="utf-8")
     uvicorn.run(build_app(), host="127.0.0.1", port=PORT, log_level="warning")
 
 

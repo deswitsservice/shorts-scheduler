@@ -1,0 +1,75 @@
+name: Windows helper
+
+# Installs the helper on a real Windows machine the way a user would (site/install.ps1), then checks it answers,
+# refuses unsigned-in requests, can launch Chrome through bot.start_chrome and read its cookies, and uninstalls
+# cleanly. A real post still needs a Windows tester with signed-in accounts; this proves everything up to that.
+on:
+  pull_request:
+    paths: ["bot.py", "webapp/**", "helper/**", "site/**", ".github/workflows/windows-helper.yml"]
+  push:
+    branches: [master]
+    paths: ["bot.py", "webapp/**", "helper/**", "site/**", ".github/workflows/windows-helper.yml"]
+  workflow_dispatch:
+
+jobs:
+  install-and-run:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the helper from this checkout (site/install.ps1)
+        shell: pwsh
+        env:
+          SHORTS_SOURCE_DIR: ${{ github.workspace }}
+          SHORTS_NO_OPEN: "1"
+        run: ./site/install.ps1
+
+      - name: Helper answers and refuses requests without a sign-in
+        shell: pwsh
+        run: |
+          $info = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/api/helper/info
+          "helper/info: $($info.StatusCode) $($info.Content)"
+          if ($info.StatusCode -ne 200) { throw 'helper/info did not answer 200' }
+          $acc = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/api/accounts -SkipHttpErrorCheck
+          "accounts without a token: $($acc.StatusCode)"
+          if ($acc.StatusCode -ne 401) { throw 'expected 401 without a sign-in token' }
+          $evil = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/api/helper/info -Headers @{ Origin = 'https://evil.example' } -SkipHttpErrorCheck
+          "foreign origin: $($evil.StatusCode)"
+          if ($evil.StatusCode -ne 403) { throw 'expected 403 for a foreign origin' }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Startup')) 'Shorts Everywhere helper.lnk'))) { throw 'startup shortcut missing' }
+
+      - name: Chrome starts through bot.start_chrome, and cookies and windows can be read
+        shell: pwsh
+        run: |
+          $app = Join-Path $env:USERPROFILE '.shorts-everywhere'
+          $env:SHORTS_DATA_DIR = Join-Path $env:RUNNER_TEMP 'shortsdata'
+          New-Item -ItemType Directory -Force -Path $env:SHORTS_DATA_DIR | Out-Null
+          $code = @"
+          import sys
+          sys.path[:0] = [r'$app\app']
+          import bot
+          print('chrome binary:', bot.chrome_binary())
+          bot.start_chrome()
+          assert bot.chrome_running(), 'Chrome did not start'
+          print('cookies readable:', len(bot.browser_cookie_names()))
+          print('windows restored:', bot.unminimize_windows())
+          print('ok')
+          "@
+          & (Join-Path $app 'venv\Scripts\python.exe') -c $code
+          if ($LASTEXITCODE) { throw 'Chrome check failed' }
+
+      - name: Uninstall (site/uninstall.ps1)
+        shell: pwsh
+        run: |
+          ./site/uninstall.ps1
+          Start-Sleep -Seconds 2
+          $r = try { Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/api/helper/info -TimeoutSec 3 } catch { $null }
+          if ($r) { throw 'helper still running after uninstall' }
+          if (Test-Path (Join-Path ([Environment]::GetFolderPath('Startup')) 'Shorts Everywhere helper.lnk')) { throw 'startup shortcut still there' }
+          'uninstalled cleanly'
+
+      - name: Helper log (on failure)
+        if: failure()
+        shell: pwsh
+        run: Get-Content (Join-Path $env:USERPROFILE '.shorts-everywhere\helper.log') -ErrorAction SilentlyContinue
