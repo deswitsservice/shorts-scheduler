@@ -170,11 +170,43 @@ def _move_running_chrome_offscreen():
         pass  # best-effort -- don't let a repositioning failure block the caller
 
 
+def chrome_binary():
+    """Path to Google Chrome on this computer (SHORTS_CHROME_BINARY overrides), or None if it isn't installed."""
+    if os.environ.get("SHORTS_CHROME_BINARY"):
+        return os.environ["SHORTS_CHROME_BINARY"]
+    if sys.platform == "darwin":
+        candidates = [CHROME]
+    elif sys.platform == "win32":
+        roots = [os.environ.get(v) for v in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")]
+        candidates = [os.path.join(r, "Google", "Chrome", "Application", "chrome.exe") for r in roots if r]
+    else:
+        import shutil
+        candidates = [shutil.which(n) for n in ("google-chrome", "google-chrome-stable", "chromium")]
+    return next((c for c in candidates if c and os.path.isfile(c)), None)
+
+
+def _chrome_flags(background):
+    flags = [f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
+             "--no-first-run", "--no-default-browser-check",
+             # A hidden/off-screen window is otherwise treated as a background tab and throttled: a Meta
+             # upload crawled from 60% to 73% over minutes (2026-10-03). Same flags as webapp/browser_worker.py.
+             "--disable-features=MacWebContentsOcclusion,CalculateNativeWinOcclusion",
+             "--disable-backgrounding-occluded-windows",
+             "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
+             "--window-size=" + os.environ.get("SHORTS_WINDOW_SIZE", "1280x900").lower().replace("x", ",")]
+    if background:
+        flags.append("--window-position=-2400,-2400")
+    return flags
+
+
 def start_chrome(urls=(), background=True):
     """Plain Chrome (not launched by Playwright, so Google sign-in works) with a debug port. Starts at most one."""
     if chrome_running():
         if background:
             _move_running_chrome_offscreen()
+        return
+    if sys.platform != "darwin":
+        _start_chrome_direct(urls, background)
         return
     already = subprocess.run(["pgrep", "-f", f"user-data-dir={PROFILE}"], capture_output=True, text=True).stdout.strip()
     if not already:
@@ -196,19 +228,28 @@ def start_chrome(urls=(), background=True):
             # window appears, overriding the "don't foreground" hint. -j launches it already
             # hidden (like Cmd+H), a stronger state Chrome has to actively undo, not just skip.
             command += ["-g", "-j"]
-        command += ["-a", "/Applications/Google Chrome.app", "--args",
-                    f"--user-data-dir={PROFILE}", f"--remote-debugging-port={PORT}",
-                    "--no-first-run", "--no-default-browser-check",
-                    # A hidden/off-screen window is otherwise treated as a background tab and throttled: a Meta
-                    # upload crawled from 60% to 73% over minutes (2026-10-03). Same flags as webapp/browser_worker.py.
-                    "--disable-features=MacWebContentsOcclusion", "--disable-backgrounding-occluded-windows",
-                    "--disable-renderer-backgrounding", "--disable-background-timer-throttling",
-                    "--window-size=" + os.environ.get("SHORTS_WINDOW_SIZE", "1280x900").lower().replace("x", ",")]
-        if background:
-            command.append("--window-position=-2400,-2400")
-        command.extend(urls)
+        command += ["-a", "/Applications/Google Chrome.app", "--args", *_chrome_flags(background), *urls]
         subprocess.Popen(command,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    _wait_for_chrome()
+
+
+def _start_chrome_direct(urls, background):
+    """Windows/Linux: run chrome(.exe) itself, detached so it outlives the helper's request. Chrome there cleans up
+    its own profile lock after a crash, so the macOS stale-SingletonLock handling isn't needed."""
+    chrome = chrome_binary()
+    if not chrome:
+        raise RuntimeError("Google Chrome isn't installed. Install it from google.com/chrome, then try again.")
+    kwargs = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "stdin": subprocess.DEVNULL}
+    if sys.platform == "win32":
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen([chrome, *_chrome_flags(background), *urls], **kwargs)
+    _wait_for_chrome()
+
+
+def _wait_for_chrome():
     for _ in range(40):
         if chrome_running():
             break
@@ -676,7 +717,7 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
             pg.get_by_role("button", name="Schedule").first.click(); pg.wait_for_timeout(1500)
             for name, val in (("hours", when.strftime("%I")), ("minutes", when.strftime("%M")), ("meridiem", when.strftime("%p"))):
                 el = pg.locator(f"input[aria-label='{name}']").first
-                el.click(); pg.keyboard.press("Meta+A"); pg.keyboard.type(val, delay=80)
+                el.click(); pg.keyboard.press("ControlOrMeta+A"); pg.keyboard.type(val, delay=80)
             pg.wait_for_timeout(600)
         story = vid.get("story", False) if story is None else story
         toggles = pg.locator("input[aria-label*='story' i]")
@@ -770,12 +811,12 @@ def tiktok(vid, at=None, commit=False, on_step=lambda msg: None):
         on_step("Adding caption")
         ed = pg.locator(".public-DraftEditor-content").first
         ed.scroll_into_view_if_needed(); ed.click()
-        pg.keyboard.press("Meta+A"); pg.keyboard.press("Backspace")
+        pg.keyboard.press("ControlOrMeta+A"); pg.keyboard.press("Backspace")
         pg.keyboard.insert_text(caption); pg.wait_for_timeout(1200)
         if len(ed.inner_text().strip()) < min(20, len(caption)):
             # The first click can miss the editor (confirmed live: a post went out with a placeholder /
             # empty caption and TikTok won't let you fix the cover afterwards). Retry once, then fail loudly.
-            ed.click(force=True); pg.keyboard.press("Meta+A"); pg.keyboard.press("Backspace")
+            ed.click(force=True); pg.keyboard.press("ControlOrMeta+A"); pg.keyboard.press("Backspace")
             pg.keyboard.insert_text(caption); pg.wait_for_timeout(1200)
             if len(ed.inner_text().strip()) < min(20, len(caption)):
                 sys.exit("tiktok: caption did not go into the editor")

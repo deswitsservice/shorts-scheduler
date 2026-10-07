@@ -112,6 +112,51 @@ never touch any server, so hosting is just static files.
   people's posts. The owner's own server launcher must set both to keep the old behaviour.
 - The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
 
+### Windows support (2026-10-07)
+
+The helper now runs on Windows too. Install it in PowerShell with `irm https://minefoundation.org/install.ps1 | iex`;
+remove it with `uninstall.ps1` (set `$env:SHORTS_UNINSTALL_ALL='1'` first to also delete sign-ins).
+
+- **`site/install.ps1`** does what `install.sh` does:
+  - checks that Chrome is installed (Program Files, Program Files (x86), or the per-user LocalAppData install)
+  - installs `uv` into `%USERPROFILE%\.shorts-everywhere\bin`, which fetches Python 3.12 into `venv\`
+  - downloads the repo zip from codeload into `app\`; new code replaces the old only after packages install
+  - stops any running `helper.local_app` process
+  - adds a **Startup-folder shortcut** (`Shorts Everywhere helper.lnk`, runs `pythonw.exe -u -m helper.local_app`, no
+    console window) and starts the helper
+  - waits for `/api/helper/info`
+  - needs no admin rights
+  - honours the same `SHORTS_REF`, `SHORTS_SOURCE_DIR` and `SHORTS_NO_OPEN` testing variables as `install.sh`
+- **`bot.py`**
+  - `chrome_binary()` finds Chrome per OS (`SHORTS_CHROME_BINARY` overrides).
+  - On Windows and Linux, `start_chrome` runs Chrome directly, detached (`DETACHED_PROCESS`); macOS keeps its
+    `open -n -g -j` launch.
+  - Both share `_chrome_flags()`, which also disables Windows' own occlusion throttling
+    (`CalculateNativeWinOcclusion`).
+  - The three select-all shortcuts went from `Meta+A` (the Windows key on a PC) to `ControlOrMeta+A`, so Meta and
+    TikTok captions replace the field's text on both systems.
+- **`helper/local_app.py`:** under `pythonw` there's no stdout or stderr, so output goes to `helper.log`.
+- **Dashboard:** the install card shows the PowerShell steps and command to Windows visitors, and hides the Safari note.
+- **`site/build.sh`:** publishes `install.ps1` and `uninstall.ps1`, served as `text/plain; charset=utf-8`, uncached.
+- **CI** (`.github/workflows/windows-helper.yml`, `windows-latest`) installs from the checkout with `install.ps1`, then:
+  - `/api/helper/info` returns 200
+  - `/api/accounts` without a token returns 401
+  - a foreign Origin gets 403
+  - the startup shortcut exists
+  - `bot.start_chrome()` launches Chrome, and cookies and windows can be read over CDP
+  - `uninstall.ps1` stops the helper and removes the shortcut
+
+  It runs on pull requests and pushes to `master` that touch the helper.
+
+Verified on macOS:
+- `chrome_binary()` still returns `/Applications/Google Chrome.app/...`.
+- `ControlOrMeta+A` replaced a textarea's text in headless Chrome.
+- The owner's helper reinstalled from this branch and answered.
+- Unit tests: 57/59, with the same 2 pre-existing `test_videomaker` failures.
+
+Not verified: a real post from Windows. The owner has no Windows PC, so the first Windows users from the invite list act
+as beta testers.
+
 ### YouTube "upload finished" check (2026-10-05)
 
 A YouTube post of video 10 to amoura looked stuck. A read-only capture of the Studio tab showed the upload already

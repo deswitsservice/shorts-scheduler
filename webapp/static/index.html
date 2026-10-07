@@ -881,15 +881,15 @@
   <section>
     <div class="card" id="helperInstall" hidden>
       <h2>Install the free helper</h2>
-      <p class="hint">Shorts Everywhere posts from your own computer, with your own signed-in Chrome. Nothing about your videos or logins goes through this website. You install the helper once (Mac, with Google Chrome).</p>
+      <p class="hint">Shorts Everywhere posts from your own computer, with your own signed-in Chrome. Nothing about your videos or logins goes through this website. You install the helper once (Mac or Windows, with Google Chrome).</p>
       <ol style="margin:10px 0;padding-left:20px;line-height:1.6">
-        <li>Open <b>Terminal</b> (press <kbd>⌘</kbd> + <kbd>Space</kbd>, type <i>Terminal</i>, press Return).</li>
+        <li id="installStep1">Open <b>Terminal</b> (press <kbd>⌘</kbd> + <kbd>Space</kbd>, type <i>Terminal</i>, press Return).</li>
         <li>Paste this and press Return:
           <pre id="installCmd" style="white-space:pre-wrap;word-break:break-all;margin:6px 0;padding:10px;border-radius:8px;background:rgba(120,100,190,.12);user-select:all">curl -fsSL https://minefoundation.org/install.sh | bash</pre>
           <button type="button" class="pill-btn" id="installCopy">Copy</button></li>
         <li>If Chrome asks to let this site <b>access other apps and services on this device</b> (or your local network), choose <b>Allow</b>.</li>
       </ol>
-      <p class="hint">Using Safari? It can&rsquo;t reach the helper from this page; open <a href="http://127.0.0.1:8765/">127.0.0.1:8765</a> after installing.</p>
+      <p class="hint" id="installSafari">Using Safari? It can&rsquo;t reach the helper from this page; open <a href="http://127.0.0.1:8765/">127.0.0.1:8765</a> after installing.</p>
       <button type="button" class="retry-btn" id="installRecheck">I&rsquo;ve installed it, check again</button>
     </div>
     <div class="card" id="accounts">
@@ -1942,6 +1942,11 @@ document.addEventListener('pointerdown', e => {
 /* Local helper: install card, and Connect opens the real Chrome window on this computer (no streamed view). */
 (() => {
   const $ = id => document.getElementById(id);
+  if (/Windows/i.test(navigator.userAgent)) {  // Windows installs with PowerShell instead of Terminal
+    $('installStep1').innerHTML = 'Open <b>PowerShell</b> (press the <kbd>Windows</kbd> key, type <i>PowerShell</i>, press Enter).';
+    $('installCmd').textContent = 'irm https://minefoundation.org/install.ps1 | iex';
+    $('installSafari').hidden = true;
+  }
   $('installCopy').onclick = async () => {
     try { await navigator.clipboard.writeText($('installCmd').textContent); $('installCopy').textContent = 'Copied'; } catch (e) {}
   };
