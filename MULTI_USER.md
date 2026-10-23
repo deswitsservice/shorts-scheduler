@@ -112,6 +112,76 @@ never touch any server, so hosting is just static files.
   people's posts. The owner's own server launcher must set both to keep the old behaviour.
 - The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
 
+### Brand profiles: "Post as" (2026-10-23)
+
+The owner runs two content lines, each with its own YouTube channel, Facebook Page and Instagram account:
+- **Paper Crypt:** Shorts.
+- **Cold Case Chronicles:** long, widescreen episodes.
+- **amoura:** the existing Shorts brand, which stays exactly as it was. It is **not** a profile: it is the owner's
+  default settings (`youtube_channel`, `meta_asset_id`, `support_url`…), shown as the picker's first option,
+  "amoura (as before)", through `default_label`.
+
+The dashboard now has a **Post as** picker, so one helper posts to the right set of accounts.
+
+- **Where profiles live:** in the helper's `~/.shorts-everywhere/config.json`, under `profiles` (keyed by id), together
+  with `owner_email`. They are never stored on minefoundation.org or in Supabase. Each profile has these fields:
+  - `label`, `format` (`short` or `long`)
+  - `platforms`: the only platforms that profile may post to
+  - `youtube_channel` (UC id) and `youtube_channel_name`
+  - `meta_asset_id`, plus an optional `meta_business_id`
+  - `facebook_account`, `instagram_account`
+- **Owner only.**
+  - `GET /api/profiles` returns the profiles only when the signed-in Supabase user's email matches `owner_email`
+    (case-insensitive); anyone else gets `[]`, so the picker never appears for them.
+  - `/api/schedule` with `profile=<id>` returns 403 unless the user is the owner.
+  - A profile refuses platforms it isn't set up for (400).
+- **Per-post accounts.** `engine.brand_for()` fills in the post's YouTube channel, channel name, Meta Page
+  (`meta_asset_id`) and the Instagram and Facebook account names; any of these typed into "Posting accounts" still
+  win. `bot.meta()` uses the post's `meta_asset_id` before the global `SHORTS_META_ASSET_ID` pin.
+- **YouTube channel switching.** One Google account owns amoura, Paper Crypt and Cold Case Chronicles. When Studio is
+  on a different channel than the profile wants, `bot.switch_channel()` picks the channel by name on
+  youtube.com/channel_switcher, and then the channel is checked again. It still stops if the channel is wrong after
+  that.
+- **Long videos on Facebook** go through the same Reels composer. Since Meta's June 2025 change, every Facebook video
+  upload is a Reel, with no length limit. Instagram can't take 8–10 minute episodes, so the Cold Case profile leaves
+  Instagram out until a teaser workflow exists.
+- **The job list** shows each job's profile label.
+
+The owner's profiles (IDs found read-only through the helper's sign-in; channel IDs from the public channel pages):
+
+| Profile | YouTube | Facebook Page (asset) | Instagram |
+|---|---|---|---|
+| Paper Crypt (Shorts) | `UCVWsxf0QZXpHEpqEtJMqbTA` (@PaperCryptTales) | Paper Crypt `1232745043266570` | papercrypttales |
+| Cold Case Chronicles (Long) | `UCg85UGSCLnoTM48RggRJmkQ` (@unclosedcoldcasefiles) | Cold Case Chronicles `1370465649484129` | none |
+| amoura (default, not a profile) | `UC4gsfYjRlgp36oWy54juMHw` (@amourawhispers) | Amoura `1310083138856565` | amourawhispers (+ TikTok) |
+
+Verified:
+- **`tests/test_brand_profiles.py`** (5 tests):
+  - the owner gets the brand's accounts
+  - someone else gets 403
+  - an unset platform gets 400
+  - an unknown profile gets 403
+  - a post with no profile behaves as before
+
+  It restores the functions it patches, so later test modules aren't affected.
+- **Headless Chrome against this branch's helper**, with a test `config.json` naming a throwaway owner:
+  - The owner saw "Post as" with all three profiles.
+  - Cold Case Chronicles left only YouTube and Facebook enabled, and showed
+    "YouTube: Cold Case Chronicles · Facebook: Cold Case Chronicles · widescreen episode".
+  - Paper Crypt enabled YouTube, Instagram and Facebook, and turned TikTok off.
+  - Cold Case Chronicles with Instagram was refused (400).
+  - A second account saw no picker, `/api/profiles` returned 0, and posting with a profile was refused (403).
+  - The test accounts were deleted afterwards.
+- **Full unit suite:** 64 tests, with only the 2 pre-existing `test_videomaker` failures.
+
+`/api/profiles` returns `{"default_label", "profiles"}`; non-owners get `{"default_label": "", "profiles": []}`.
+Switching the picker back to the default re-ticks every platform (a first version left Instagram/TikTok unticked
+after visiting Cold Case; caught in the browser check and fixed). Re-checked in headless Chrome: Cold Case → amoura →
+Paper Crypt → amoura gave `youtube instagram facebook tiktok` all ticked on each return to amoura.
+
+**Not yet verified live:** the automatic channel switch inside a real upload, Business Suite picking the Paper Crypt
+and Cold Case Chronicles Pages, and a 9-minute video through the Reels composer. These need a real (or dry-run) post.
+
 ### YouTube "upload finished" check (2026-10-05)
 
 A YouTube post of video 10 to amoura looked stuck. A read-only capture of the Studio tab showed the upload already

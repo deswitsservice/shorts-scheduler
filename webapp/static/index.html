@@ -1007,6 +1007,14 @@
             </div>
           </div>
 
+          <div class="frow" id="brandRow" hidden>
+            <label class="field-label" for="brandSelect">Post as</label>
+            <div class="fcol">
+              <select id="brandSelect"><option value="">No brand (choose accounts yourself)</option></select>
+              <div class="hint" id="brandHint"></div>
+            </div>
+          </div>
+
           <div class="frow">
             <span class="field-label">Post to</span>
             <div class="fcol">
@@ -1608,6 +1616,7 @@ document.getElementById('form').addEventListener('submit', async e => {
   fd.append('youtube_channel', document.getElementById('youtubeChannel').value);
   fd.append('instagram_account', document.getElementById('instagramAccount').value);
   fd.append('facebook_account', document.getElementById('facebookAccount').value);
+  if (document.getElementById('brandSelect').value) fd.append('profile', document.getElementById('brandSelect').value);
   fd.append('title', document.getElementById('title').value);
   fd.append('description', document.getElementById('desc').value);
   fd.append('tags', document.getElementById('tags').value);
@@ -1938,6 +1947,49 @@ document.addEventListener('pointerdown', e => {
 })();
 </script>
 <script src="/static/connections.js"></script>
+<script>
+/* "Post as": the owner's brand profiles from the helper (it returns none to anyone else). Picking one ticks that brand's
+   platforms, greys out the rest, and the helper fills in the brand's YouTube channel, Facebook Page and Instagram. */
+(() => {
+  const sel = document.getElementById('brandSelect'), hint = document.getElementById('brandHint');
+  let brands = [];
+  const setPlatforms = allowed => document.querySelectorAll('input[name=p]').forEach(cb => {
+    const ok = !allowed || allowed.includes(cb.value);
+    cb.disabled = !ok;
+    cb.closest('label').style.opacity = ok ? '' : '0.4';
+    // A brand ticks exactly its platforms; going back to the default (e.g. amoura) ticks them all again, as before.
+    const want = allowed ? ok : true;
+    if (cb.checked !== want) { cb.checked = want; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+  });
+  sel.addEventListener('change', () => {
+    const b = brands.find(x => x.id === sel.value);
+    setPlatforms(b ? b.platforms : null);
+    if (!b) { hint.textContent = ''; return; }
+    const parts = [];
+    if (b.platforms.includes('youtube')) parts.push(`YouTube: ${b.youtube_channel_name}`);
+    if (b.platforms.includes('facebook')) parts.push(`Facebook: ${b.facebook_account}`);
+    if (b.platforms.includes('instagram')) parts.push(`Instagram: ${b.instagram_account}`);
+    hint.textContent = parts.join(' · ') + (b.format === 'long' ? ' · widescreen episode' : ' · vertical Short');
+    try { localStorage.setItem('brand', sel.value); } catch (e) {}
+  });
+  authReady.then(async () => {
+    if (!currentUser || !SUPA) return;
+    let info = {};
+    try {
+      const r = await fetch('/api/profiles');
+      info = r.ok ? await r.json() : {};
+    } catch (e) { info = {}; }
+    brands = info.profiles || [];
+    if (!brands.length) return;
+    // The first option is the owner's usual setup (e.g. amoura), posting exactly as before.
+    if (info.default_label) sel.options[0].text = `${info.default_label} (as before)`;
+    for (const b of brands) sel.add(new Option(b.label, b.id));
+    document.getElementById('brandRow').hidden = false;
+    let last = ''; try { last = localStorage.getItem('brand') || ''; } catch (e) {}
+    if (brands.some(b => b.id === last)) { sel.value = last; sel.dispatchEvent(new Event('change')); }
+  });
+})();
+</script>
 <script>
 /* Local helper: install card, and Connect opens the real Chrome window on this computer (no streamed view). */
 (() => {
