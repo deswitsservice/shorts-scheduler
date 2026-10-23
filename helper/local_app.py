@@ -32,7 +32,8 @@ ORIGINS = {"https://minefoundation.org", "https://www.minefoundation.org",
 ORIGINS |= {o.strip().rstrip("/") for o in os.environ.get("SHORTS_EXTRA_ORIGINS", "").split(",") if o.strip()}
 HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 SETTINGS = {"support_url": "SHORTS_SUPPORT_URL", "meta_asset_id": "SHORTS_META_ASSET_ID",
-            "meta_business_id": "SHORTS_META_BUSINESS_ID", "youtube_channel": "SHORTS_YOUTUBE_CHANNEL"}
+            "meta_business_id": "SHORTS_META_BUSINESS_ID", "youtube_channel": "SHORTS_YOUTUBE_CHANNEL",
+            "youtube_channel_name": "SHORTS_YOUTUBE_CHANNEL_NAME"}
 # App accounts live in the shorts-everywhere Supabase project (supabase/ in this repo). Both values are public by
 # design (the same ones the dashboard ships); the helper only uses them to ask Supabase whether a token is valid.
 SUPABASE_URL = os.environ.get("SHORTS_SUPABASE_URL", "https://xzbsyxvovxryisqppbbr.supabase.co")

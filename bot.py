@@ -39,23 +39,32 @@ def attach_local_file(pg, target, path):
         session.detach()
 
 
+def support_link(vid):
+    """(url, line) for this post. A brand sets its own support_url ("" = no link), so one brand's Ko-fi never lands on
+    another brand's posts; without one, the global SHORTS_SUPPORT_URL applies."""
+    url = (vid.get("support_url", SUPPORT_URL) if vid else SUPPORT_URL).strip().removeprefix("https://").removeprefix("http://")
+    return url, (f"☕ Support my videos: https://{url}" if url else "")
+
+
 def with_support_link(vid):
     """Description with the Ko-fi line added just above the trailing hashtags. Skipped for made-for-kids videos
     (YouTube doesn't allow links to outside sites on kids content) and when the link is already there."""
     desc = vid.get("description", "")
-    if not SUPPORT_URL or vid.get("made_for_kids") or SUPPORT_URL in desc:
+    url, line = support_link(vid)
+    if not url or vid.get("made_for_kids") or url in desc:
         return desc
     m = re.search(r"(?:^|\n)[ \t]*((?:#\w+[ \t]*)+)\s*$", desc)
     if not m:
-        return (desc.rstrip() + "\n\n" + SUPPORT_LINE).strip()
-    return (desc[:m.start()].rstrip() + "\n\n" + SUPPORT_LINE + "\n\n" + m.group(1).strip()).strip()
+        return (desc.rstrip() + "\n\n" + line).strip()
+    return (desc[:m.start()].rstrip() + "\n\n" + line + "\n\n" + m.group(1).strip()).strip()
 
 
-def without_support_link(desc):
+def without_support_link(desc, vid=None):
     """Undo with_support_link (the web app adds it before trimming, for every platform)."""
-    if not SUPPORT_LINE:
+    _, line = support_link(vid)
+    if not line:
         return desc
-    return re.sub(r"\n*" + re.escape(SUPPORT_LINE) + r"\n*", "\n\n", desc).strip()
+    return re.sub(r"\n*" + re.escape(line) + r"\n*", "\n\n", desc).strip()
 
 
 def chrome_running():
@@ -281,15 +290,38 @@ def show_idle_screen(url="https://www.youtube.com"):
         except Exception:
             pass
 
-def switch_channel(pg, name):
-    """Make `name` the active channel of the signed-in Google account, via YouTube's own channel switcher."""
-    pg.goto("https://www.youtube.com/channel_switcher", wait_until="domcontentloaded", timeout=30000)
-    pg.wait_for_timeout(3000)
-    pick = pg.get_by_text(name, exact=True)
-    if not pick.count():
-        sys.exit(f"youtube: no channel named {name!r} on this Google account, so nothing was uploaded.")
-    pick.first.click()
-    pg.wait_for_timeout(5000)
+def switch_channel(pg, name, channel_id=None):
+    """Make `name` the active channel of the signed-in Google account, via YouTube's own channel switcher.
+
+    Clicking only the title text inside an entry did nothing (demo, 2026-10-23); the whole account entry has to be
+    clicked. Studio also keeps redirecting its home page to the last channel it showed, so open the target channel's
+    own Studio page afterwards: that both proves the switch (no "permission" page) and moves Studio's home to it."""
+    for _ in range(2):  # the whole switch, at most twice
+        pg.goto("https://www.youtube.com/channel_switcher", wait_until="domcontentloaded", timeout=30000)
+        try:  # the list renders after page load; looking too early found nothing (1 of 9 live switches, 2026-10-23)
+            pg.wait_for_selector("ytd-account-item-renderer", timeout=15000)
+        except Exception:
+            continue
+        pg.wait_for_timeout(1000)
+        title = pg.locator("#channel-title", has_text=re.compile(rf"^\s*{re.escape(name)}\s*$"))
+        entry = pg.locator("ytd-account-item-renderer").filter(has=title)
+        if not entry.count():
+            continue
+        with pg.expect_navigation(timeout=30000):
+            entry.first.click()
+        pg.wait_for_timeout(3000)
+        if not channel_id:
+            return
+        # Right after a switch Studio can still show the old identity's "no permission" page for a few seconds
+        # (half of the live switches on 2026-10-23); reload until it catches up.
+        for _ in range(3):
+            pg.goto(f"https://studio.youtube.com/channel/{channel_id}/videos", wait_until="domcontentloaded", timeout=30000)
+            pg.wait_for_timeout(5000)
+            if "don't have permission" not in pg.inner_text("body"):
+                return
+            pg.wait_for_timeout(3000)
+    sys.exit(f"youtube: couldn't switch to channel {name!r} ({channel_id or 'no id'}): it isn't in this Google account's "
+             "channel list, or Studio never gave access. Nothing was uploaded.")
 
 
 def resolve_channel(pg):
@@ -434,7 +466,7 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
                 # One Google account owns several channels (amoura, Paper Crypt, Cold Case Chronicles...). Switch to the
                 # one this post belongs to instead of stopping.
                 on_step(f"Switching YouTube to {vid['youtube_channel_name']}")
-                switch_channel(pg, vid["youtube_channel_name"])
+                switch_channel(pg, vid["youtube_channel_name"], expected)
                 channel = resolve_channel(pg)
             if expected and expected != channel:
                 sys.exit(f"youtube: YouTube Studio is on channel {channel}, not {expected}, so nothing was uploaded. "
@@ -448,7 +480,7 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
             pg.wait_for_selector("#title-textarea #textbox", timeout=60000)
             on_step("Adding title and description")
             t = pg.locator("#title-textarea #textbox"); t.click(); t.fill(vid["title"])
-            desc = without_support_link(vid["description"]) if channel in YT_NO_LINK_CHANNELS else with_support_link(vid)
+            desc = without_support_link(vid["description"], vid) if channel in YT_NO_LINK_CHANNELS else with_support_link(vid)
             d = pg.locator("#description-textarea #textbox"); d.click(); d.fill(desc)
             if vid.get("thumbnail"):
                 ti = pg.locator("input[type=file][accept*='image']")
