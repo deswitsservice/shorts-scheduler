@@ -11,6 +11,14 @@ Settings live in ~/.shorts-everywhere/config.json (all optional):
    "youtube_channel": "UC..."}
 youtube_channel is the channel posts go to when a job doesn't name one; if YouTube Studio is on a different channel the
 post stops instead of uploading to the wrong one.
+
+Brand profiles ("Post as" on the dashboard), visible to and usable by owner_email only:
+  "owner_email": "you@example.com",
+  "profiles": {"papercrypt": {"label": "Paper Crypt (Shorts)", "format": "short",
+                              "platforms": ["youtube", "instagram", "facebook"],
+                              "youtube_channel": "UC...", "youtube_channel_name": "Paper Crypt",
+                              "meta_asset_id": "...", "facebook_account": "Paper Crypt",
+                              "instagram_account": "papercrypttales"}, ...}
 """
 import json, os, sys, time, urllib.error, urllib.request
 from pathlib import Path
@@ -84,6 +92,10 @@ def configure():
             os.environ.setdefault(env, str(cfg[key]))
     if cfg.get("yt_no_link_channels"):
         os.environ.setdefault("SHORTS_YT_NO_LINK_CHANNELS", ",".join(cfg["yt_no_link_channels"]))
+    # Brand profiles ("Post as" on the dashboard) belong to one person: only owner_email may see or use them.
+    if cfg.get("profiles") and cfg.get("owner_email"):
+        os.environ["SHORTS_PROFILES"] = json.dumps(cfg["profiles"])
+        os.environ["SHORTS_OWNER_EMAIL"] = str(cfg["owner_email"])
     root = Path(__file__).resolve().parents[1]
     sys.path[:0] = [str(root), str(root / "webapp")]
 
@@ -184,6 +196,15 @@ def build_app():
     @engine.app.get("/api/helper/info")
     def info():
         return {"app": "shorts-everywhere-helper", "local": True}
+
+    @engine.app.get("/api/profiles")
+    def profiles(request: Request):
+        # Only the owner sees their brands (and the Pages/channels in them); anyone else gets an empty list.
+        owner = os.environ.get("SHORTS_OWNER_EMAIL", "").strip().lower()
+        if not owner or request.state.user.get("email", "").strip().lower() != owner:
+            return []
+        keep = ("label", "format", "platforms", "youtube_channel_name", "instagram_account", "facebook_account")
+        return [{"id": pid, **{k: p.get(k) for k in keep}} for pid, p in engine.brand_profiles().items()]
 
     @engine.app.post("/api/connect")
     async def connect(platform: str):

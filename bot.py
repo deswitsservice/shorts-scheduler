@@ -281,6 +281,17 @@ def show_idle_screen(url="https://www.youtube.com"):
         except Exception:
             pass
 
+def switch_channel(pg, name):
+    """Make `name` the active channel of the signed-in Google account, via YouTube's own channel switcher."""
+    pg.goto("https://www.youtube.com/channel_switcher", wait_until="domcontentloaded", timeout=30000)
+    pg.wait_for_timeout(3000)
+    pick = pg.get_by_text(name, exact=True)
+    if not pick.count():
+        sys.exit(f"youtube: no channel named {name!r} on this Google account, so nothing was uploaded.")
+    pick.first.click()
+    pg.wait_for_timeout(5000)
+
+
 def resolve_channel(pg):
     """The channel-less root redirects to whichever channel is signed in -- no hardcoded ID needed,
     so this works for any user's account, not just one specific channel. The redirect timing varies
@@ -419,6 +430,12 @@ def youtube(vid, commit=False, resume=False, on_step=lambda msg: None):
         if not resume:
             channel = resolve_channel(pg)
             expected = vid.get("youtube_channel", "").strip()
+            if expected and expected != channel and vid.get("youtube_channel_name"):
+                # One Google account owns several channels (amoura, Paper Crypt, Cold Case Chronicles...). Switch to the
+                # one this post belongs to instead of stopping.
+                on_step(f"Switching YouTube to {vid['youtube_channel_name']}")
+                switch_channel(pg, vid["youtube_channel_name"])
+                channel = resolve_channel(pg)
             if expected and expected != channel:
                 sys.exit(f"youtube: YouTube Studio is on channel {channel}, not {expected}, so nothing was uploaded. "
                          "Click Connect YouTube, switch to the right channel (profile picture > Switch account), "
@@ -628,7 +645,9 @@ def meta(vid, target, at=None, commit=False, story=None, on_step=lambda msg: Non
         # switched to a different Page overnight on 2026-10-03). SHORTS_META_ASSET_ID/SHORTS_META_BUSINESS_ID
         # pin it to one Page.
         composer = "https://business.facebook.com/latest/reels_composer"
-        asset, business = os.environ.get("SHORTS_META_ASSET_ID"), os.environ.get("SHORTS_META_BUSINESS_ID")
+        # A brand profile names its own Page; otherwise fall back to the global pin.
+        asset = vid.get("meta_asset_id") or os.environ.get("SHORTS_META_ASSET_ID")
+        business = vid.get("meta_business_id") or (None if vid.get("meta_asset_id") else os.environ.get("SHORTS_META_BUSINESS_ID"))
         if asset:
             composer += f"?asset_id={asset}" + (f"&business_id={business}" if business else "")
         pg.goto(composer)

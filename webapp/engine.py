@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Internal single-workspace automation engine. Serve through authenticated server.py only."""
-import asyncio, datetime, os, re, shutil, sys, threading, time, uuid
+import asyncio, datetime, json, os, re, shutil, sys, threading, time, uuid
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -9,7 +9,7 @@ sys.path.insert(0, HERE)
 import videomaker  # noqa: E402
 import bot  # noqa: E402  (browser flows: youtube / meta / tiktok)
 
-from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi import FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from playwright.async_api import async_playwright  # noqa: E402
@@ -83,6 +83,24 @@ def fit_caption(platform, text):
         out = _word_cut(body, room) + "\u2026" + (("\n\n" + tail) if tail else "")
         notes.append(f"Caption trimmed from {before} to {len(out)} characters ({platform}'s limit is {limit}).")
     return out, (" ".join(notes) or None)
+
+
+def brand_profiles():
+    """The owner's brand profiles ({id: {...}}), from the helper's config.json (helper/local_app.py)."""
+    try:
+        return json.loads(os.environ.get("SHORTS_PROFILES") or "{}")
+    except ValueError:
+        return {}
+
+
+def brand_for(profile_id, request):
+    """The named brand profile, or None unless the signed-in app user is the owner. Profiles hold the owner's own
+    Pages and channels, so nobody else may post through them even on the owner's computer."""
+    owner = os.environ.get("SHORTS_OWNER_EMAIL", "").strip().lower()
+    user = request.scope.get("state", {}).get("user") or {}
+    if not owner or (user.get("email") or "").strip().lower() != owner:
+        return None
+    return brand_profiles().get(profile_id)
 
 
 def validate_job(plats, title, desc, when, publish_now):
@@ -261,8 +279,15 @@ async def schedule(
     youtube_channel: str = Form(""),
     instagram_account: str = Form(""),
     facebook_account: str = Form(""),
+    profile: str = Form(""),  # brand profile id from config.json (owner only); empty = no brand
+    request: Request = None,
 ):
     jid = uuid.uuid4().hex[:8]
+    brand = {}
+    if profile.strip():
+        brand = brand_for(profile.strip(), request) if request is not None else None
+        if brand is None:
+            return JSONResponse({"error": "That brand isn't available for your account."}, status_code=403)
 
     if not title.strip():
         return JSONResponse({"error": "Give the video a title."}, status_code=400)
@@ -279,6 +304,10 @@ async def schedule(
     plats = list(dict.fromkeys(p.strip() for p in platforms.split(",") if p.strip() in PLATFORM_HOST))
     if not plats:
         return JSONResponse({"error": "Pick at least one platform."}, status_code=400)
+    if brand:
+        missing = [p for p in plats if p not in brand.get("platforms", [])]
+        if missing:
+            return JSONResponse({"error": f"{brand.get('label', profile)} isn't set up for {', '.join(missing)}."}, status_code=400)
     publish_now = mode == "now"
     when_dt = None
     if not publish_now:
@@ -322,11 +351,16 @@ async def schedule(
            "thumb_title": thumb_title == "true", "ai_label": ai_label == "true",
            # A Google account can own several channels; with none named, Studio posts to whichever was used last
            # (video 10 went to Cold Case Chronicles instead of amoura, 2026-10-05). Fall back to the configured default.
-           "youtube_channel": youtube_channel.strip() or os.environ.get("SHORTS_YOUTUBE_CHANNEL", "").strip(),
-           "instagram_account": instagram_account.strip(), "facebook_account": facebook_account.strip(), "accounts": {}}
+           "youtube_channel": (youtube_channel.strip() or brand.get("youtube_channel", "")
+                               or os.environ.get("SHORTS_YOUTUBE_CHANNEL", "").strip()),
+           "youtube_channel_name": brand.get("youtube_channel_name", ""),
+           "meta_asset_id": brand.get("meta_asset_id", ""), "meta_business_id": brand.get("meta_business_id", ""),
+           "instagram_account": instagram_account.strip() or brand.get("instagram_account", ""),
+           "facebook_account": facebook_account.strip() or brand.get("facebook_account", ""), "accounts": {}}
     job = {"id": jid, "title": vid["title"], "when": "Now" if publish_now else vid["schedule"], "platforms": plats,
            "dry": dry == "true", "vid": vid, "accounts": vid["accounts"], "steps": {p: {"state": "queued", "log": []} for p in plats},
-           "created": time.time(), "started": None, "finished": None, "current_platform": None, "thumbnail_url": None}
+           "created": time.time(), "started": None, "finished": None, "current_platform": None, "thumbnail_url": None,
+           "profile": brand.get("label", "")}
     try:
         await asyncio.get_running_loop().run_in_executor(None, bot.prepare_thumbnail, vid)
     except Exception:
@@ -458,7 +492,7 @@ def list_jobs():
     out = []
     keys = ("id", "title", "when", "platforms", "dry", "steps", "started", "finished", "current_platform", "thumbnail_url", "accounts")
     for j in sorted(jobs.values(), key=lambda x: -x["created"]):
-        out.append({**{k: j[k] for k in keys}, "cancel": bool(j.get("cancel"))})
+        out.append({**{k: j[k] for k in keys}, "cancel": bool(j.get("cancel")), "profile": j.get("profile", "")})
     return out
 
 
