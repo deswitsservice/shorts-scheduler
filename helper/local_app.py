@@ -12,8 +12,9 @@ Settings live in ~/.shorts-everywhere/config.json (all optional):
 youtube_channel is the channel posts go to when a job doesn't name one; if YouTube Studio is on a different channel the
 post stops instead of uploading to the wrong one.
 
-Brand profiles ("Post as" on the dashboard), visible to and usable by owner_email only:
-  "owner_email": "you@example.com",
+Brand profiles ("Post as" on the dashboard), visible to and usable by owner_email only. default_label names what the
+first option ("no brand") posts as: the default settings above, unchanged.
+  "owner_email": "you@example.com", "default_label": "amoura",
   "profiles": {"papercrypt": {"label": "Paper Crypt (Shorts)", "format": "short",
                               "platforms": ["youtube", "instagram", "facebook"],
                               "youtube_channel": "UC...", "youtube_channel_name": "Paper Crypt",
@@ -96,6 +97,8 @@ def configure():
     if cfg.get("profiles") and cfg.get("owner_email"):
         os.environ["SHORTS_PROFILES"] = json.dumps(cfg["profiles"])
         os.environ["SHORTS_OWNER_EMAIL"] = str(cfg["owner_email"])
+        # What "no brand" means for the owner, e.g. "amoura": their default settings above, unchanged.
+        os.environ["SHORTS_DEFAULT_LABEL"] = str(cfg.get("default_label", ""))
     root = Path(__file__).resolve().parents[1]
     sys.path[:0] = [str(root), str(root / "webapp")]
 
@@ -199,12 +202,13 @@ def build_app():
 
     @engine.app.get("/api/profiles")
     def profiles(request: Request):
-        # Only the owner sees their brands (and the Pages/channels in them); anyone else gets an empty list.
+        # Only the owner sees their brands (and the Pages/channels in them); anyone else gets nothing.
         owner = os.environ.get("SHORTS_OWNER_EMAIL", "").strip().lower()
         if not owner or request.state.user.get("email", "").strip().lower() != owner:
-            return []
+            return {"default_label": "", "profiles": []}
         keep = ("label", "format", "platforms", "youtube_channel_name", "instagram_account", "facebook_account")
-        return [{"id": pid, **{k: p.get(k) for k in keep}} for pid, p in engine.brand_profiles().items()]
+        return {"default_label": os.environ.get("SHORTS_DEFAULT_LABEL", ""),
+                "profiles": [{"id": pid, **{k: p.get(k) for k in keep}} for pid, p in engine.brand_profiles().items()]}
 
     @engine.app.post("/api/connect")
     async def connect(platform: str):

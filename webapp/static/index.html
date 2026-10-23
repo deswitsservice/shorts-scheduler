@@ -1957,7 +1957,9 @@ document.addEventListener('pointerdown', e => {
     const ok = !allowed || allowed.includes(cb.value);
     cb.disabled = !ok;
     cb.closest('label').style.opacity = ok ? '' : '0.4';
-    if (allowed && cb.checked !== ok) { cb.checked = ok; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+    // A brand ticks exactly its platforms; going back to the default (e.g. amoura) ticks them all again, as before.
+    const want = allowed ? ok : true;
+    if (cb.checked !== want) { cb.checked = want; cb.dispatchEvent(new Event('change', { bubbles: true })); }
   });
   sel.addEventListener('change', () => {
     const b = brands.find(x => x.id === sel.value);
@@ -1972,11 +1974,15 @@ document.addEventListener('pointerdown', e => {
   });
   authReady.then(async () => {
     if (!currentUser || !SUPA) return;
+    let info = {};
     try {
       const r = await fetch('/api/profiles');
-      brands = r.ok ? await r.json() : [];
-    } catch (e) { brands = []; }
+      info = r.ok ? await r.json() : {};
+    } catch (e) { info = {}; }
+    brands = info.profiles || [];
     if (!brands.length) return;
+    // The first option is the owner's usual setup (e.g. amoura), posting exactly as before.
+    if (info.default_label) sel.options[0].text = `${info.default_label} (as before)`;
     for (const b of brands) sel.add(new Option(b.label, b.id));
     document.getElementById('brandRow').hidden = false;
     let last = ''; try { last = localStorage.getItem('brand') || ''; } catch (e) {}

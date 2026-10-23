@@ -117,7 +117,9 @@ never touch any server, so hosting is just static files.
 The owner runs two content lines, each with its own YouTube channel, Facebook Page and Instagram account:
 - **Paper Crypt:** Shorts.
 - **Cold Case Chronicles:** long, widescreen episodes.
-- **amoura:** the existing Shorts brand, kept as a third profile.
+- **amoura:** the existing Shorts brand, which stays exactly as it was. It is **not** a profile: it is the owner's
+  default settings (`youtube_channel`, `meta_asset_id`, `support_url`…), shown as the picker's first option,
+  "amoura (as before)", through `default_label`.
 
 The dashboard now has a **Post as** picker, so one helper posts to the right set of accounts.
 
@@ -151,7 +153,7 @@ The owner's profiles (IDs found read-only through the helper's sign-in; channel 
 |---|---|---|---|
 | Paper Crypt (Shorts) | `UCVWsxf0QZXpHEpqEtJMqbTA` (@PaperCryptTales) | Paper Crypt `1232745043266570` | papercrypttales |
 | Cold Case Chronicles (Long) | `UCg85UGSCLnoTM48RggRJmkQ` (@unclosedcoldcasefiles) | Cold Case Chronicles `1370465649484129` | none |
-| amoura (Shorts) | `UC4gsfYjRlgp36oWy54juMHw` (@amourawhispers) | Amoura `1310083138856565` | amourawhispers |
+| amoura (default, not a profile) | `UC4gsfYjRlgp36oWy54juMHw` (@amourawhispers) | Amoura `1310083138856565` | amourawhispers (+ TikTok) |
 
 Verified:
 - **`tests/test_brand_profiles.py`** (5 tests):
@@ -171,6 +173,11 @@ Verified:
   - A second account saw no picker, `/api/profiles` returned 0, and posting with a profile was refused (403).
   - The test accounts were deleted afterwards.
 - **Full unit suite:** 64 tests, with only the 2 pre-existing `test_videomaker` failures.
+
+`/api/profiles` returns `{"default_label", "profiles"}`; non-owners get `{"default_label": "", "profiles": []}`.
+Switching the picker back to the default re-ticks every platform (a first version left Instagram/TikTok unticked
+after visiting Cold Case; caught in the browser check and fixed). Re-checked in headless Chrome: Cold Case → amoura →
+Paper Crypt → amoura gave `youtube instagram facebook tiktok` all ticked on each return to amoura.
 
 **Not yet verified live:** the automatic channel switch inside a real upload, Business Suite picking the Paper Crypt
 and Cold Case Chronicles Pages, and a 9-minute video through the Reels composer. These need a real (or dry-run) post.
