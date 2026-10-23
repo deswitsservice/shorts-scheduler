@@ -353,10 +353,15 @@ async def schedule(
            # (video 10 went to Cold Case Chronicles instead of amoura, 2026-10-05). Fall back to the configured default.
            "youtube_channel": (youtube_channel.strip() or brand.get("youtube_channel", "")
                                or os.environ.get("SHORTS_YOUTUBE_CHANNEL", "").strip()),
-           "youtube_channel_name": brand.get("youtube_channel_name", ""),
+           # The default channel needs its name too: after a brand post Studio is left on that brand's channel, and a
+           # plain post must be able to switch back instead of stopping.
+           "youtube_channel_name": (brand.get("youtube_channel_name", "") if brand else
+                                    ("" if youtube_channel.strip() else os.environ.get("SHORTS_YOUTUBE_CHANNEL_NAME", "").strip())),
            "meta_asset_id": brand.get("meta_asset_id", ""), "meta_business_id": brand.get("meta_business_id", ""),
            "instagram_account": instagram_account.strip() or brand.get("instagram_account", ""),
            "facebook_account": facebook_account.strip() or brand.get("facebook_account", ""), "accounts": {}}
+    if brand:
+        vid["support_url"] = brand.get("support_url", "")  # a brand's own link only; never the default (amoura) Ko-fi
     job = {"id": jid, "title": vid["title"], "when": "Now" if publish_now else vid["schedule"], "platforms": plats,
            "dry": dry == "true", "vid": vid, "accounts": vid["accounts"], "steps": {p: {"state": "queued", "log": []} for p in plats},
            "created": time.time(), "started": None, "finished": None, "current_platform": None, "thumbnail_url": None,

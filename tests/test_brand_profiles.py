@@ -76,5 +76,30 @@ class BrandProfileTests(unittest.TestCase):
         self.assertEqual(vid["youtube_channel_name"], "")
 
 
+    def test_brand_gets_its_own_support_link_not_the_default(self):
+        self.post(as_user("owner@example.com"), profile="long")
+        vid = self.submitted[-1]["vid"]
+        self.assertEqual(vid["support_url"], "")  # Cold Case has no link: the default (amoura) Ko-fi must not leak in
+        old = engine.bot.SUPPORT_URL
+        try:
+            engine.bot.SUPPORT_URL = "ko-fi.com/default"
+            self.assertNotIn("ko-fi", engine.bot.with_support_link({**vid, "description": "Story #tag"}))
+            self.assertIn("ko-fi.com/default", engine.bot.with_support_link({"description": "Story #tag"}))
+        finally:
+            engine.bot.SUPPORT_URL = old
+
+    def test_default_channel_name_lets_plain_posts_switch_back(self):
+        os.environ["SHORTS_YOUTUBE_CHANNEL"], os.environ["SHORTS_YOUTUBE_CHANNEL_NAME"] = "UCdefault", "amoura"
+        try:
+            self.post(as_user("owner@example.com"))
+            vid = self.submitted[-1]["vid"]
+            self.assertEqual((vid["youtube_channel"], vid["youtube_channel_name"]), ("UCdefault", "amoura"))
+            self.assertNotIn("support_url", vid)  # no brand: the global link applies, as before
+            self.post(as_user("owner@example.com"), youtube_channel="UCtyped")  # a typed channel isn't the default one
+            self.assertEqual(self.submitted[-1]["vid"]["youtube_channel_name"], "")
+        finally:
+            del os.environ["SHORTS_YOUTUBE_CHANNEL"], os.environ["SHORTS_YOUTUBE_CHANNEL_NAME"]
+
+
 if __name__ == "__main__":
     unittest.main()

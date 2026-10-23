@@ -112,6 +112,53 @@ never touch any server, so hosting is just static files.
   people's posts. The owner's own server launcher must set both to keep the old behaviour.
 - The video maker isn't installed by default (it needs ffmpeg and faster-whisper); it reports that it's unavailable.
 
+### Brand profiles: demo trial and fixes (2026-10-23)
+
+The owner asked for a demo before the first real brand post. It ran the posting code directly against the helper's
+Chrome, with nothing published. Every Business Suite run stopped before Share; YouTube was tested by switching only,
+with no uploads.
+
+**Demo results:**
+- **Paper Crypt → Facebook** (the 66 s "THE HOOK" Reel): Business Suite posted **as Paper Crypt** and reached the Share
+  step. The screenshot shows the Paper Crypt Page, the video, and Share now selected.
+- **Cold Case Chronicles → Facebook** with a 9-minute 1280×720 test video: the composer accepted it, picked Cold Case
+  Chronicles and reached Share. That confirms long videos go through the Reels composer.
+- **Paper Crypt → Instagram:** stopped with "no Instagram account exactly matching 'papercrypttales'". The Paper Crypt
+  composer offers only "Post to: Paper Crypt", while Amoura offers "Amoura and amourawhispers". **papercrypttales isn't
+  linked to the Paper Crypt Page in Business Suite yet; the owner has to connect it.**
+- **YouTube switching failed both times (fixed below).** Clicking the channel title text in
+  youtube.com/channel_switcher changed nothing.
+
+**Fixes:**
+- **`bot.switch_channel(pg, name, channel_id)`:**
+  - waits for the `ytd-account-item-renderer` list to render (15 s), because looking too early found nothing
+  - clicks the **whole** account entry whose `#channel-title` exactly matches the name
+  - opens the target channel's Studio page and reloads it up to 3 times while Studio shows the old identity's "don't
+    have permission" page; right after a switch this happened about half the time
+  - repeats the whole switch once
+  - stops with "nothing was uploaded" if it still can't switch
+
+  Opening the target's Studio page also moves Studio's home redirect to it; without that, Studio kept redirecting to
+  the last channel shown.
+- **Switching back to the default:** `youtube_channel_name` is now a top-level setting (`SHORTS_YOUTUBE_CHANNEL_NAME`;
+  "amoura" for the owner). A plain post that uses the default channel gets it, so after a brand post Studio is
+  switched back instead of the post stopping on "wrong channel". A channel ID typed by hand gets no name, so it is
+  never switched to automatically.
+- **Per-brand support link:** `bot.support_link(vid)`; `with_support_link` and `without_support_link` take the post's
+  `support_url`. A brand post carries the brand's own `support_url` (empty means no link), so the owner's amoura
+  Ko-fi line never lands on Paper Crypt or Cold Case posts. Posts without a brand keep the global link.
+
+**Verified:**
+- **Live switching, 10/10 OK:** Cold Case → Paper Crypt → Cold Case → amoura → Paper Crypt → Cold Case → amoura →
+  Cold Case → Paper Crypt → amoura, each confirmed by Studio's home resolving to the expected channel ID. Each switch
+  took 23–36 s, and the helper was left on amoura.
+- **Before the retries were added:** 5 of 9 and then 8 of 9 switches worked.
+- **`tests/test_brand_profiles.py`, now 7 tests:**
+  - a brand gets its own empty `support_url`, and `with_support_link` then adds no Ko-fi line, while a plain post
+    still adds the global one
+  - a plain post gets the default channel name, and a hand-typed channel ID doesn't
+- **Full suite:** 66 tests, with only the 2 pre-existing `test_videomaker` failures.
+
 ### Brand profiles: "Post as" (2026-10-23)
 
 The owner runs two content lines, each with its own YouTube channel, Facebook Page and Instagram account:
