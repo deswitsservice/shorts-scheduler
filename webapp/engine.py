@@ -572,11 +572,37 @@ async def _live_browser():
     async with _live_lock:
         browser = _live["browser"]
         if browser is not None and browser.is_connected():
-            return browser
-        if _live["pw"] is None:
-            _live["pw"] = await async_playwright().start()
-        _live["browser"] = await _live["pw"].chromium.connect_over_cdp(CDP, no_defaults=True)
-        return _live["browser"]
+            # is_connected() stays True even after the driver process has died, so prove the connection with a real
+            # round trip to Chrome before reusing it.
+            try:
+                session = await asyncio.wait_for(browser.new_browser_cdp_session(), 3)
+                await asyncio.wait_for(session.detach(), 3)
+                return browser
+            except Exception:
+                _live["browser"] = None
+        for attempt in range(2):
+            try:
+                if _live["pw"] is None or attempt:
+                    if _live["pw"] is not None:
+                        try:
+                            await _live["pw"].stop()
+                        except Exception:
+                            pass
+                    _live["pw"] = await async_playwright().start()
+                _live["browser"] = await _live["pw"].chromium.connect_over_cdp(CDP, no_defaults=True)
+                return _live["browser"]
+            except Exception:
+                # The driver process itself can die: it crashed on a "No dialog is showing" race when another
+                # connection answered a "leave page?" dialog first (2026-10-23), and every later view then failed.
+                # Drop it and start a fresh one.
+                dead, _live["pw"], _live["browser"] = _live["pw"], None, None
+                if dead is not None:
+                    try:
+                        await dead.stop()
+                    except Exception:
+                        pass
+                if attempt:
+                    raise
 
 
 @app.websocket("/ws")
