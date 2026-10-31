@@ -313,12 +313,19 @@ def switch_channel(pg, name, channel_id=None):
         if not channel_id:
             return
         # Right after a switch Studio can still show the old identity's "no permission" page for a few seconds
-        # (half of the live switches on 2026-10-23); reload until it catches up.
+        # (half of the live switches on 2026-10-23). Reloading the same page can keep showing it: Studio only picks up
+        # the new identity once its channel-less root resolves again (2026-10-30, a new Money in 60 channel failed all
+        # six reloads, then opened fine right after studio.youtube.com/). So resolve the root between attempts.
         for _ in range(3):
             pg.goto(f"https://studio.youtube.com/channel/{channel_id}/videos", wait_until="domcontentloaded", timeout=30000)
             pg.wait_for_timeout(5000)
             if "don't have permission" not in pg.inner_text("body"):
                 return
+            try:
+                if resolve_channel(pg) == channel_id:
+                    continue  # Studio now knows the new identity; the next load of the target page should open
+            except SystemExit:
+                pass  # signed out or still resolving; the remaining attempts or the outer retry handle it
             pg.wait_for_timeout(3000)
     sys.exit(f"youtube: couldn't switch to channel {name!r} ({channel_id or 'no id'}): it isn't in this Google account's "
              "channel list, or Studio never gave access. Nothing was uploaded.")
